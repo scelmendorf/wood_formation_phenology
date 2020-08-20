@@ -499,6 +499,9 @@ force_model=function(df){
 force_model(real_data)
 force_model(out_fake)
 
+plot (real_data$doy_event~real_data$Force5s)
+plot (out_fake$doy_event~out_fake$Force5s)
+
 chill_model=function(df){
   f1=lme4::lmer(doy_event ~ Chill_5_5+ (1|Species)+(1|site), data = df)
   Var <- c(MuMIn::r.squaredGLMM(f1)[[1]], MuMIn::r.squaredGLMM(f1)[[2]]-
@@ -512,6 +515,9 @@ chill_model=function(df){
 # the chilling effect explains MORE of the variation
 chill_model(real_data)
 chill_model(out_fake)
+
+plot (real_data$doy_event~real_data$Chill_5_5)
+plot (out_fake$doy_event~out_fake$Chill_5_5)
 
 
 # -- RANDOMIZE THEIR DATA KEEPING SITE/SPP SUBSTRUCTURE? ----
