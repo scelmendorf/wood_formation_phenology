@@ -19,20 +19,17 @@
 
 # dls=data.frame(doy=c(1:365), photoperiod=NA)
 # for (doy in c(1:365)){
-#   dls$photoperiod[doy]=insol::daylength(lat=E$lat[1], lon=E$lon[1], doy, 1)[3]
+#   dls$photoperiod[doy]=insol::daylength(lat=48.35, lon=E$lon[1], doy, 1)[3]
 # }
 # 
 # dls_2=data.frame(doy=c(1:365), photoperiod=NA)
 # for (doy in c(1:365)){
-#   dls_2$photoperiod[doy]=insol::daylength(lat=E$lon[1], lon=E$lat[1], doy, 1)[3]
+#   dls_2$photoperiod[doy]=insol::daylength(lat=E$lon[1], lon=7.066667, doy, 1)[3]
 # }
 # 
 # E$photoperiod[1]
 # dls$photoperiod[dls$doy==E$DOY[1]] #corresponds to doy ~152 even though the phenodate is 114?
 # dls_2$photoperiod[dls_2$doy==E$DOY[1]] #not just bc they swapped lat long or something obvs
-
-
-
 
 # 3 work on some randomizations, need to think more on how to do it smartly
 # workflow would be simulate responses
@@ -245,11 +242,18 @@ ERA_anPPT=ERA_clim%>%
 
 
 #define function to accumulate chill from Nov to day-of-event
-calc_chill=function(phen_data, clim_data){
+calc_chill=function(phen_data, clim_data, return_all_doy=FALSE){
   #df$X[duplicated(df$X)]
-  df=dplyr::full_join(phen_data, clim_data, by=c('site'='site'))%>%
+  df=dplyr::full_join(phen_data, clim_data, by=c('site'='site'))
+  if (!return_all_doy){
+    df=df%>%
     filter((doy<=doy_event&year==year_of_event)|
-             (doy>304&year==(year_of_event-1)))%>%
+             (doy>304&year==(year_of_event-1)))
+  }else{
+    df=df%>%filter((year==year_of_event&doy<=304)|
+      doy>304&year==(year_of_event-1))
+  }
+  df=df%>%
     mutate(
       chill=ifelse(-5<ERA_av_air_temp_C&ERA_av_air_temp_C<5, 1, 0))%>%
     ungroup()%>%
@@ -257,37 +261,49 @@ calc_chill=function(phen_data, clim_data){
     group_by(X, Species, site, Biome, year_of_event, tree)%>%
     mutate(Chill_5_5=cumsum(chill))%>%
     ungroup()%>%
-    filter(doy_event==doy&year==year_of_event)%>%
     select(-chill)
+  if (!return_all_doy){
+    df=df%>%filter(doy_event==doy&year==year_of_event)
+  }else{
+    df=df%>%
+      mutate(doy=ifelse(doy>304, doy-365, doy))
+  }
   return(df)
 }
-#tst=calc_chill(phen_data, clim_data)
+#tst=calc_chill(phen_data, clim_data, return_all_doy=TRUE)
 #sanity test that you didn't break something with nas or blanks
 #sum (duplicated(tst$X))
 
 #define function to accumulate ppt and forcing from Jan 1 to day-of-event
-calc_ppt_force=function(phen_data, clim_data){
-  df=dplyr::full_join(phen_data, clim_data, by=c('site'='site'))%>%
-    filter((doy<=doy_event&!is.na(doy_event)&year_of_event==year))%>%
+calc_ppt_force=function(phen_data, clim_data, return_all_doy=FALSE){
+  df=dplyr::full_join(phen_data, clim_data, by=c('site'='site'))
+  if (!return_all_doy){
+    df=df%>%filter((doy<=doy_event&!is.na(doy_event)&year_of_event==year))
+  }else{
+    df=df%>%filter(year_of_event==year)
+  }
+  df=df%>%
     mutate(
       force=ifelse(ERA_av_air_temp_C>5, 28.4/(1+exp(-.185*(ERA_av_air_temp_C-18.4))), 0))%>%
     ungroup()%>%
     arrange(Species, site, Biome, year_of_event, tree, date)%>%
-    #group_by(subsite, water_year)%>%
     group_by(X, Species, site, Biome, year_of_event, tree)%>%
-    #group_by(Species, site, Biome, year, tree)%>%
     mutate(Force5s=cumsum(force),
            PrecipDOY=cumsum(total_precipitation))%>%
-    ungroup()%>%
+    ungroup()
+  if (!return_all_doy){
+  df=df%>%
     filter(doy_event==doy&year==year_of_event)
+  }
   return(df)
 }
-#tst=calc_ppt_force(phen_data, clim_data)
+#tst=calc_ppt_force(phen_data, clim_data, return_all_doy=TRUE)
 
 
 #define function to recalc all the input variables given the climate data
 # and some potentially randomized phenology data
-est_clim=function(phen_data, clim_data){
+est_clim=function(phen_data, clim_data, return_all_doy=FALSE){
+  if (!return_all_doy){
   #calculate chilling
   df=calc_chill(phen_data, clim_data)%>%
     #calculate forcing and total ppt
@@ -318,18 +334,30 @@ est_clim=function(phen_data, clim_data){
     ))%>%
     # #surely there is a better way to deal with the type conversions here
     mutate(scPDSI_p=ifelse(scPDSI_p==-9999, NA, scPDSI_p))#%>%
-   #this is how I thought they calculated it but this is wrong
-    # mutate(month_event=lubridate::month(date_event))%>%
-    # mutate(scPDSI_p_2=case_when(
-    #   month_event == 1 ~ scPDSI1,
-    #   month_event == 2 ~ scPDSI2,
-    #   month_event == 3 ~ scPDSI3,
-    #   month_event == 4 ~ scPDSI4,
-    #   month_event == 5 ~ scPDSI5,
-    #   month_event == 6 ~ scPDSI6,
-    #   TRUE ~ -9999
-    # ))%>%
-    # mutate(scPDSI_p_2=ifelse(scPDSI_p_2==-9999, NA, scPDSI_p_2))
+  #this is how I thought they calculated it but this is wrong
+  # mutate(month_event=lubridate::month(date_event))%>%
+  # mutate(scPDSI_p_2=case_when(
+  #   month_event == 1 ~ scPDSI1,
+  #   month_event == 2 ~ scPDSI2,
+  #   month_event == 3 ~ scPDSI3,
+  #   month_event == 4 ~ scPDSI4,
+  #   month_event == 5 ~ scPDSI5,
+  #   month_event == 6 ~ scPDSI6,
+  #   TRUE ~ -9999
+  # ))%>%
+  # mutate(scPDSI_p_2=ifelse(scPDSI_p_2==-9999, NA, scPDSI_p_2))
+  }else{
+    df=calc_chill(phen_data, clim_data, return_all_doy=TRUE)%>%
+      select(-year)%>%
+      #calculate forcing and total ppt
+      full_join(.,  
+                calc_ppt_force(phen_data, clim_data, return_all_doy=TRUE)%>%
+                  select(-year)%>%
+                  #this will skip photoperiods for the prior yrs Nov data, I think ok?
+                  rowwise()%>%
+                  mutate(photoperiod=insol::daylength(lat, lon, doy, 1)[3])%>%
+                  mutate(photoperiod=ifelse(is.finite(photoperiod), photoperiod, 24)))
+  }
   return(df)
 }
 
@@ -363,7 +391,7 @@ select(-Chill0_5, -Chill_5_5,
 clim_data=ERA_clim%>%select(site, year, date, ERA_av_air_temp_C, total_precipitation)%>%
   mutate(doy=lubridate::yday(date))
 
-#generate our best approximation of their climate data using gridded
+#generate our best approximation of their climate data using gridded data
 real_data=est_clim(phen_data, clim_data)
 
 #sanity checks that we calculated right
@@ -387,147 +415,222 @@ abline(0,1)
 plot (real_data$scPDSI_p[order(real_data$X)]~E$scPDSI_p[order(E$X)])
 abline(0,1)
 
+# -- UNIVARIATE MODEL FITS AND CROSS-VALIDATION  ----
 
-# -- RANDOMIZE THEIR DATA IN VARIOUS WAYS AND SEE HOW THE PATTERNS LOOK ----
-#first fake data - just randomize the phenodates and ignore the 
-# species/site structure
-out_fake=est_clim(phen_data%>%
-                    mutate(doy_event=sample(phen_data$doy_event, replace=FALSE)), clim_data)
-#just fakety fake data here
-plot(real_data$doy_event[order(real_data$X)]~out_fake$doy_event[order(out_fake$X)])
-
-# or randomize sites, as in, take the real phen data, strip off site, lat, lon (used for photoperd)
-#and assign each site to a different site, lat and long
-# does not randomize biomes of MATs or alts of sites, which is a bit of a problem
-# for regenerating climate data (force, chill, MAT are wrong in this, but the
-#lats/longs move so the photoperiod is faked correctly)
-
-randomize_locs=function(df){
-  site=df%>%select(site, lat, lon)%>%
-    distinct()
-  site$site_random=sample(site$site, replace=FALSE)
-  site=left_join(site,
-      site%>%rename(lat_random=lat, lon_random=lon)%>%
-        select(-site_random), by=c('site_random'='site'))
-  df=df%>%left_join(., site)%>%
-    select(-site, -lat, -lon)%>%
-    rename(site=site_random, lat=lat_random, lon=lon_random)
-  return(df)
+cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=10, prop_drop=.10,
+                                                 #need to choose site or year
+                                                 by=NULL){
+  real_data=est_clim(phen_data, clim_data)
+  out=list()
+  if (by=='site'){
+    sites=unique (real_data$site)
+  }
+  if (by=='year'){
+    years=unique (real_data$year_of_event)
+  }
+  for (k in 1:n_groups){
+    if (by=='site'){
+      sites2use=sample(sites, size=round((1-prop_drop)*length(sites)), replace=FALSE)
+      fit_data=real_data%>%
+        filter(site%in%sites2use)
+      val_data=real_data%>%
+        filter(!site%in%sites2use)
+    }
+    if (by=='year'){
+      years2use=sample(years, size=round((1-prop_drop)*length(years)), replace=FALSE)
+      fit_data=real_data%>%
+        filter(year_of_event%in%years2use)
+      val_data=real_data%>%
+        filter(!year_of_event%in%years2use)
+    }
+    #same thing but drop one CV
+    f1=lme4::lmer(Force5s ~ 1 + (1|Species)+(1|site), data = fit_data,
+                  control=lmerControl(optimizer="Nelder_Mead"))
+    f2=lme4::lmer(Chill_5_5 ~ 1 + (1|Species)+(1|site), data = fit_data,
+                  control=lmerControl(optimizer="Nelder_Mead"))
+    f3=lme4::lmer(photoperiod ~ 1 + (1|Species)+(1|site), data = fit_data,
+                  control=lmerControl(optimizer="Nelder_Mead"))
+    f4=lme4::lmer(doy_event ~ MAT + (1|Species)+(1|site), data = fit_data,
+                  control=lmerControl(optimizer="Nelder_Mead"))
+    f5=lme4::lmer(doy_event ~ lat + (1|Species)+(1|site), data = fit_data,
+                  control=lmerControl(optimizer="Nelder_Mead"))
+    f6=lme4::lmer(Force5s ~ lat + (1|Species)+(1|site), data = fit_data,
+                  control=lmerControl(optimizer="Nelder_Mead"))
+    f7=lme4::lmer(doy_event ~ 1 + (1|Species)+(1|site), data = fit_data,
+                  control=lmerControl(optimizer="Nelder_Mead"))
+    val_data$preds_force=predict(f1, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    val_data$preds_chill=predict(f2, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    val_data$preds_photoperiod=predict(f3, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    val_data$preds_MAT=predict(f4, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    val_data$preds_lat=predict(f5, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    val_data$preds_force_lat=predict(f6, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    val_data$preds_null=predict(f7, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    val_data=val_data%>%select(X, Species,Type,site,              
+                               lat,lon,alt,Biome,              
+                               year_of_event,tree,doy_event, preds_force, preds_chill, preds_photoperiod,
+                               preds_MAT, preds_lat, preds_force_lat, preds_null)
+    # #est Force5s for all doys
+    clim_all_doy=est_clim(val_data, clim_data, return_all_doy = TRUE)
+    pred_vs_actual_force=clim_all_doy%>%
+      rowwise()%>%
+      filter(Force5s>preds_force&!is.na(Force5s))%>%
+      group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
+      summarise(doy_pred=min(doy), .groups='drop')%>%
+      full_join(clim_all_doy%>%
+                  group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
+                  summarise(doy_event=unique(doy_event), .groups='drop'))%>%
+      mutate(doy_pred=ifelse(is.na(doy_pred), 365, doy_pred))
+    rmse_force=Metrics::rmse(pred_vs_actual_force$doy_event, pred_vs_actual_force$doy_pred)
+    pred_vs_actual_chill=clim_all_doy%>%
+      rowwise()%>%
+      filter(Chill_5_5>preds_chill&!is.na(Chill_5_5))%>%
+      group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
+      summarise(doy_pred=min(doy), .groups='drop')%>%
+      full_join(clim_all_doy%>%
+                  group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
+                  summarise(doy_event=unique(doy_event), .groups='drop'))%>%
+      mutate(doy_pred=ifelse(is.na(doy_pred), 303, doy_pred))
+    rmse_chill=Metrics::rmse(pred_vs_actual_chill$doy_event, pred_vs_actual_chill$doy_pred)
+    pred_vs_actual_photoperiod=clim_all_doy%>%
+      rowwise()%>%
+      filter(photoperiod>preds_photoperiod&doy>0&doy<=173&!is.na(photoperiod))%>%# take out the late fall vals
+      group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
+      summarise(doy_pred=min(doy), .groups='drop')%>%
+      full_join(clim_all_doy%>%
+                   group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
+                  summarise(doy_event=unique(doy_event), .groups='drop'))%>%
+      mutate(doy_pred=ifelse(is.na(doy_pred), 173, doy_pred))
+    pred_vs_actual_photoperiod_2=clim_all_doy%>%
+      rowwise()%>%
+      filter(photoperiod<preds_photoperiod&doy>173&!is.na(photoperiod))%>%# take out the late fall vals
+      group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
+      summarise(doy_pred_2=min(doy), .groups='drop')%>%
+      full_join(clim_all_doy%>%
+                  group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
+                  summarise(doy_event=unique(doy_event), .groups='drop'))%>%
+      mutate(doy_pred_2=ifelse(is.na(doy_pred_2), 173, doy_pred_2))
+    pred_vs_actual_photoperiod=full_join(pred_vs_actual_photoperiod, pred_vs_actual_photoperiod_2)%>%
+      #pick the nearest one spring or fall
+      mutate(doy_pred_all=ifelse(abs(doy_event-doy_pred)<=abs(doy_event-doy_pred_2), doy_pred, doy_pred_2))
+    rmse_photoperiod_all=Metrics::rmse(pred_vs_actual_photoperiod$doy_event, pred_vs_actual_photoperiod$doy_pred_all)
+    rmse_photoperiod_spring=Metrics::rmse(pred_vs_actual_photoperiod$doy_event, pred_vs_actual_photoperiod$doy_pred)
+    rmse_photoperiod_fall=Metrics::rmse(pred_vs_actual_photoperiod$doy_event, pred_vs_actual_photoperiod$doy_pred_2)
+    pred_vs_actual_MAT=clim_all_doy%>%
+      select(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree, doy_event, preds_MAT)%>%
+      distinct()
+    rmse_MAT=Metrics::rmse(pred_vs_actual_MAT$doy_event, pred_vs_actual_MAT$preds_MAT)
+    pred_vs_actual_lat=clim_all_doy%>%
+      select(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree, doy_event, preds_lat)%>%
+      distinct()
+    rmse_lat=Metrics::rmse(pred_vs_actual_lat$doy_event, pred_vs_actual_lat$preds_lat)
+    pred_vs_actual_force_lat=clim_all_doy%>%
+      rowwise()%>%
+      filter(Force5s>preds_force_lat&!is.na(Force5s))%>%
+      group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
+      summarise(doy_pred=min(doy), doy_event=unique(doy_event), .groups='drop')%>%
+      mutate(doy_pred=ifelse(is.na(doy_pred), 365, doy_pred))
+    rmse_force_lat=Metrics::rmse(pred_vs_actual_force_lat$doy_event, pred_vs_actual_force_lat$doy_pred)
+    pred_vs_actual_null=clim_all_doy%>%
+      select(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree, doy_event, preds_null)%>%
+      distinct()
+    rmse_null=Metrics::rmse(pred_vs_actual_null$doy_event, pred_vs_actual_null$preds_null)
+    
+    out[[k]]=list(sites2use=ifelse(by=='site', paste0(sites2use, collapse='|'), NA), 
+                  years2use=ifelse(by=='year', paste0(years2use, collapse='|'), NA), rmse_force=rmse_force, rmse_chill=rmse_chill,
+                  rmse_photoperiod_all=rmse_photoperiod_all, rmse_photoperiod_spring=rmse_photoperiod_spring,
+                  rmse_photoperiod_fall=rmse_photoperiod_fall,
+                  rmse_MAT=rmse_MAT, rmse_lat=rmse_lat,
+                  rmse_force_lat=rmse_force_lat,
+                  rmse_null=rmse_null)
+  }
+  return(out)
 }
 
-#prob w this is I don't have all the clim data for the matching years
-#do twice just for fun, eventually make a loop/function to do these
-#I think this work but should double check that it doesn't care that
-# we are moving sites around between biomes this way
-#or otherwise do somethign odd
+#run - takes a while
+tst_site=cv_forcing_chilling_photoperiod_site_CV(phen_data, clim_data, n_groups=100, prop_drop=0.1,
+                                            by='site')
 
-##this works fine to get faked photoperiod information
-#but it's suboptimal for the climate bc it needs the MAT
-# to figure out the bias in the ERA clim data
-# and also we don't have the droughty data for any other
-# yrs at these sites
-out_fake2=randomize_locs(phen_data)%>%est_clim(., clim_data)
-out_fake3=randomize_locs(phen_data)%>%est_clim(., clim_data)
-plot.new()
-plot(real_data$doy_event[order(real_data$site, real_data$year, real_data$Species, real_data$tree)]~
-       out_fake2$doy_event[order(out_fake2$site, out_fake2$year, out_fake2$Species, out_fake2$tree)])
-plot(real_data$doy_event[order(real_data$site, real_data$year, real_data$Species, real_data$tree)]~
-       out_fake3$doy_event[order(out_fake3$site, out_fake3$year, out_fake3$Species, out_fake3$tree)])
+tst_year=cv_forcing_chilling_photoperiod_site_CV(phen_data, clim_data, n_groups=100, prop_drop=0.1,
+                                            by='year')
 
+#convert to df to plot
+#there's probably better list indexing way to do this
+# it just make a ton of duplicates that you can then ditch
 
-#functions to calculate summary statistics
-photoperiod_model=function(df){
-  #f1=lme4::lmer(DOY ~ photoperiod+ (1|Species)+(1|site), data = df)
-  f1=lme4::lmer(doy_event ~ photoperiod + (1|Species)+(1|site), data = df)
-  Var <- c(MuMIn::r.squaredGLMM(f1)[[1]], MuMIn::r.squaredGLMM(f1)[[2]]-
-             MuMIn::r.squaredGLMM(f1)[[1]], 1-MuMIn::r.squaredGLMM(f1)[[2]])
-  names(Var) <- c( "Photoperiod", "Random", "Unexplained")
-  Var=Var*100 # Variance explained (%)
-  return(list(AIC=AIC(f1), BIC=BIC(f1), Var=Var))
-}
+#this for the boxplots
+tst_site_df=data.table::rbindlist(tst_site, idcol='group')%>%
+  select(-sites2use, -years2use)%>%
+  distinct()%>%
+  pivot_longer(cols=-group)%>%
+  rename(model=name, rmse=value)%>%
+  mutate(model=gsub('rmse_', '', model))
 
-#there is actually signficantly LESS variation 
-#explained by photoperiod than you would think by chance
-#but this is indeed a bit weird bc I scrambled all the random effects
-# sites and species and the like
-photoperiod_model(real_data)
+#this for the density plots
+tst_site_df_wide=data.table::rbindlist(tst_site, idcol='group')%>%
+  select(-years2use)%>%
+  rename(null_val=rmse_null)%>%
+  distinct()%>%  mutate_at(vars(contains('rmse')), .funs = rlang::list2(~. - null_val))%>%
+  select(-null_val)%>%
+  pivot_longer(cols=c(-group, -sites2use))%>%
+  rename(model=name, rmse_delta=value)%>%
+  mutate(model=gsub('rmse_', '', model))
 
-#lmer does not super love this, get some singular fits - maybe bc it's all circular? 
-photoperiod_model(out_fake)
+tst_year_df=data.table::rbindlist(tst_year, idcol='group')%>%
+  select(-years2use, -sites2use)%>%
+  distinct()%>%
+  pivot_longer(cols=-group)%>%
+  rename(model=name, rmse=value)%>%
+  mutate(model=gsub('rmse_', '', model))
 
-#just putting trees in random locations not their actual sites
-# and calculating the daylengths from there you
-# get about the same level of variation explained as you do with the real data
-photoperiod_model(out_fake2)
-photoperiod_model(out_fake3)
+tst_year_df_wide=data.table::rbindlist(tst_year, idcol='group')%>%
+  select(-sites2use)%>%
+  rename(null_val=rmse_null)%>%
+  distinct()%>%
+  mutate_at(vars(contains('rmse')), .funs = rlang::list2(~. - null_val))%>%
+  select(-null_val)%>%
+  pivot_longer(cols=c(-group, -years2use))%>%
+  rename(model=name, rmse_delta=value)%>%
+  mutate(model=gsub('rmse_', '', model))
 
-#this to me indicates their primary conclusions are not right
-#Our LMM results show that the changes in the dates of wood formation onset in
-#the Northern Hemisphere conifers can be modeled as a function of photoperiod
-#alone, along with the random effects of site and species. The marginal R2
-#and conditional R2 are 0.46 and 0.98, respectively (SI Appendix, Table S2).
+#note the chill and fall photoperiod so bad you can't even get there
+null_year_model_plot = ggplot(data=tst_year_df_wide)+
+                      geom_density(aes(x=rmse_delta, group=model, fill=model), 
+                        alpha=0.5, adjust=2)+
+  geom_vline(xintercept=0, linetype='dotted')+
+  #facet_grid(~model)+xlim(-10,10)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
+ggsave(null_year_model_plot,
+       file='plots/null_year_model_plot.jpg',
+       width=10, height=6)
 
+null_year_model_plot_full = ggplot(data=tst_year_df_wide)+
+  geom_density(aes(x=rmse_delta, group=model, fill=model), 
+               alpha=0.5, adjust=2)+
+  geom_vline(xintercept=0, linetype='dotted')+
+  facet_grid(~model)+#xlim(-10,10)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-mat_model=function(df){
-  f1=lme4::lmer(doy_event ~ MAT+ (1|Species)+(1|site), data = df)
-  #f1=lme4::lmer(DOY ~ MAT+ (1|site), data = df)
-  Var <- c(MuMIn::r.squaredGLMM(f1)[[1]], MuMIn::r.squaredGLMM(f1)[[2]]-
-             MuMIn::r.squaredGLMM(f1)[[1]], 1-MuMIn::r.squaredGLMM(f1)[[2]])
-  names(Var) <- c("MAT", "Random", "Unexplained")
-  Var=Var*100 # Variance explained (%)
-  return(list(AIC=AIC(f1), BIC=BIC(f1), Var=Var))
-}
-
-#as expected the MAT doesn't show spurious correlations if you fake the data
-mat_model(real_data)
-mat_model(out_fake)
-
-#the way I randomized by sites, the MAT doesn't move with the data so it wouldn't make sense to do that
-
-force_model=function(df){
-  f1=lme4::lmer(doy_event ~ Force5s+ (1|Species)+(1|site), data = df)
-  Var <- c(MuMIn::r.squaredGLMM(f1)[[1]], MuMIn::r.squaredGLMM(f1)[[2]]-
-             MuMIn::r.squaredGLMM(f1)[[1]], 1-MuMIn::r.squaredGLMM(f1)[[2]])
-  names(Var) <- c("Force5s", "Random", "Unexplained")
-  Var=Var*100 # Variance explained (%)
-  return(list(AIC=AIC(f1), BIC=BIC(f1), Var=Var))
-}
-
-# in random data (maybe bc there's not so much ranefs explained partially)
-# the forcing effect explains MORE of the variation
-force_model(real_data)
-force_model(out_fake)
-
-plot (real_data$doy_event~real_data$Force5s)
-plot (out_fake$doy_event~out_fake$Force5s)
-
-chill_model=function(df){
-  f1=lme4::lmer(doy_event ~ Chill_5_5+ (1|Species)+(1|site), data = df)
-  Var <- c(MuMIn::r.squaredGLMM(f1)[[1]], MuMIn::r.squaredGLMM(f1)[[2]]-
-             MuMIn::r.squaredGLMM(f1)[[1]], 1-MuMIn::r.squaredGLMM(f1)[[2]])
-  names(Var) <- c("Chill_5_5", "Random", "Unexplained")
-  Var=Var*100 # Variance explained (%)
-  return(list(AIC=AIC(f1), BIC=BIC(f1), Var=Var))
-}
-
-# in random data (maybe bc there's not so much ranefs explained partially)
-# the chilling effect explains MORE of the variation
-chill_model(real_data)
-chill_model(out_fake)
-
-plot (real_data$doy_event~real_data$Chill_5_5)
-plot (out_fake$doy_event~out_fake$Chill_5_5)
+ggsave(null_year_model_plot_full,
+       file='plots/null_year_model_plot_full.jpg',
+       width=10, height=6)
 
 
-# -- RANDOMIZE THEIR DATA KEEPING SITE/SPP SUBSTRUCTURE? ----
-#thinking maybe the right way to make fake data is use the real data to figure
-# out the sigma_spp and sigma_sites in doys
-# then just make up data from there and fit?
+null_site_model_plot = ggplot(data=tst_site_df_wide)+
+  geom_density(aes(x=rmse_delta, group=model, fill=model), 
+               alpha=0.5, adjust=2)+
+  geom_vline(xintercept=0, linetype='dotted')+
+  facet_grid(~model)+xlim(-10,10)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-#to actually do this model, you want to flip it, i.e. is
-#there less variation in photoperiod at date of phenology event
-#than expected by chance
+ggsave(null_site_model_plot,
+       file='plots/null_site_model_plot.jpg',
+       width=10, height=6)
 
+#or vis like this?
+ggplot(data=tst_year_df, aes(color=model, x=model, y=rmse))+geom_boxplot()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
+ggplot(data=tst_site_df, aes(color=model, x=model, y=rmse))+geom_boxplot()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
