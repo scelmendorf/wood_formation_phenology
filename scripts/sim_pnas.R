@@ -399,6 +399,18 @@ real_data=est_clim(phen_data, clim_data)
 plot (real_data$Force5s[order(real_data$X)]~E$Force5s[order(E$X)])
 abline(0,1)
 
+valid_ERA_plot=ggplot(data=data.frame(observed_GDD=real_data$Force5s[order(real_data$X)],
+           estimated_GDD=E$Force5s[order(E$X)]),
+       aes(x=estimated_GDD, y=observed_GDD))+
+         geom_point()+
+  geom_abline(intercept = 0, slope = 1)+
+  theme(panel.background = element_blank())+
+  labs(x = 'estimated GDD from gridded data', y='observed GDD from local sources')
+  
+ggsave("plots/valid_ERA_plot.jpg", valid_ERA_plot)
+
+Metrics::rmse(real_data$Force5s[order(real_data$X)], E$Force5s[order(E$X)])
+
 plot (real_data$Chill_5_5[order(real_data$X)]~E$Chill_5_5[order(E$X)])
 abline(0,1)
 
@@ -419,14 +431,19 @@ abline(0,1)
 
 cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=10, prop_drop=.10,
                                                  #need to choose site or year
-                                                 by=NULL){
+                                                 by=NULL, choose=FALSE){
   real_data=est_clim(phen_data, clim_data)
   out=list()
   if (by=='site'){
     sites=unique (real_data$site)
+    #don't do all combinations of site, it will take forever
   }
   if (by=='year'){
     years=unique (real_data$year_of_event)
+  }
+  if (choose){
+    all_combinations=combn(c(1:length(years)),round((1-prop_drop)*length(years)))
+    n_groups=ncol(all_combinations)
   }
   for (k in 1:n_groups){
     if (by=='site'){
@@ -437,7 +454,11 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
         filter(!site%in%sites2use)
     }
     if (by=='year'){
+      if (choose){
+        years2use=years[all_combinations[,k]]
+      }else{
       years2use=sample(years, size=round((1-prop_drop)*length(years)), replace=FALSE)
+      }
       fit_data=real_data%>%
         filter(year_of_event%in%years2use)
       val_data=real_data%>%
@@ -550,8 +571,8 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
 tst_site=cv_forcing_chilling_photoperiod_site_CV(phen_data, clim_data, n_groups=100, prop_drop=0.1,
                                             by='site')
 
-tst_year=cv_forcing_chilling_photoperiod_site_CV(phen_data, clim_data, n_groups=100, prop_drop=0.1,
-                                            by='year')
+tst_year=cv_forcing_chilling_photoperiod_site_CV(phen_data, clim_data, prop_drop=0.1,
+                                            by='year', choose=TRUE)
 
 #convert to df to plot
 #there's probably better list indexing way to do this
@@ -575,6 +596,9 @@ tst_site_df_wide=data.table::rbindlist(tst_site, idcol='group')%>%
   rename(model=name, rmse_delta=value)%>%
   mutate(model=gsub('rmse_', '', model))
 
+mean(tst_site_df_wide$rmse_delta[tst_site_df_wide$model=='chill'])
+quantile(tst_site_df_wide$rmse_delta[tst_site_df_wide$model=='chill'])
+
 tst_year_df=data.table::rbindlist(tst_year, idcol='group')%>%
   select(-years2use, -sites2use)%>%
   distinct()%>%
@@ -592,45 +616,246 @@ tst_year_df_wide=data.table::rbindlist(tst_year, idcol='group')%>%
   rename(model=name, rmse_delta=value)%>%
   mutate(model=gsub('rmse_', '', model))
 
+#these so bad just report the summaries
+mean(tst_year_df_wide$rmse_delta[tst_year_df_wide$model=='chill'])
+quantile(tst_year_df_wide$rmse_delta[tst_year_df_wide$model=='chill'])
+
+#maybe kind of a p value-like thing off
+# here but I'd rather leave it stats free
+tst_year_df_wide%>%
+  group_by(model)%>%
+  summarise(sum(rmse_delta>0)/dplyr::n())
+
+tst_site_df_wide%>%
+  group_by(model)%>%
+  summarise(sum(rmse_delta>0)/dplyr::n())
+
+
+#library (grid)
+
 #note the chill and fall photoperiod so bad you can't even get there
-null_year_model_plot = ggplot(data=tst_year_df_wide)+
-                      geom_density(aes(x=rmse_delta, group=model, fill=model), 
+null_year_model_plot = ggplot(data=tst_year_df_wide%>%
+                                filter(!model%in%c('chill', 'photoperiod_fall',
+                                                   'force_lat', 'photoperiod_spring'))%>%
+                                mutate(
+                                  model=case_when(
+                                    model=='force' ~ 'Forcing',
+                                    model=='lat' ~ 'Latitude',
+                                    model=='photoperiod_all' ~ 'Photoperiod',
+                                    model=='MAT' ~ 'MAT',
+                                    TRUE ~ 'NA')
+                                ))+
+                      geom_density(aes(x=rmse_delta, group=model, fill=model, color=model), 
                         alpha=0.5, adjust=2)+
+  theme(panel.background = element_blank())+
   geom_vline(xintercept=0, linetype='dotted')+
-  #facet_grid(~model)+xlim(-10,10)+
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  facet_grid(rows = 'model')+
+  #facet_wrap(~model)+
+  xlim(-15,15)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  labs(x = expression(delta[rmse(model - null)]))+
+  guides(fill=FALSE, color=FALSE)
 
-ggsave(null_year_model_plot,
-       file='plots/null_year_model_plot.jpg',
-       width=10, height=6)
+#add intuitive label axis
+temporal_cv=grid.arrange(
+  null_year_model_plot,
+  nrow = 1,
+  top = "Predictive performace (interannual variation)",
+  bottom = textGrob(
+    expression(better %<->% worse),
+    gp = gpar(fontface = 3, fontsize = 25),
+    #hjust = 1,
+    just='center'
+    #x = 0.1
+  ))
 
-null_year_model_plot_full = ggplot(data=tst_year_df_wide)+
-  geom_density(aes(x=rmse_delta, group=model, fill=model), 
+ggsave("plots/temporal_cv.jpg", temporal_cv)
+
+
+#note the chill and fall photoperiod so bad you can't even get there
+null_site_model_plot = ggplot(data=tst_site_df_wide%>%
+                                filter(!model%in%c('chill', 'photoperiod_fall',
+                                                   'force_lat', 'photoperiod_spring'))%>%
+                                mutate(
+                                  model=case_when(
+                                    model=='force' ~ 'Forcing',
+                                    model=='lat' ~ 'Latitude',
+                                    model=='photoperiod_all' ~ 'Photoperiod',
+                                    model=='MAT' ~ 'MAT',
+                                    TRUE ~ 'NA')
+                                ))+
+  geom_density(aes(x=rmse_delta, group=model, fill=model, color=model), 
                alpha=0.5, adjust=2)+
+  theme(panel.background = element_blank())+
   geom_vline(xintercept=0, linetype='dotted')+
-  facet_grid(~model)+#xlim(-10,10)+
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  facet_grid(rows = 'model')+
+  #facet_wrap(~model)+
+  xlim(-15,15)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  labs(x = expression(delta[rmse(model - null)]))+
+  guides(fill=FALSE, color=FALSE)
 
-ggsave(null_year_model_plot_full,
-       file='plots/null_year_model_plot_full.jpg',
-       width=10, height=6)
+#add intuitive label axis
+spatial_cv=grid.arrange(
+  null_site_model_plot,
+  nrow = 1,
+  top = "Predictive performace (spatial variation)",
+  bottom = textGrob(
+    expression(better %<->% worse),
+    gp = gpar(fontface = 3, fontsize = 25),
+    #hjust = 1,
+    just='center'
+    #x = 0.1
+  ))
 
+ggsave("plots/spatial_cv.jpg", spatial_cv)
 
-null_site_model_plot = ggplot(data=tst_site_df_wide)+
-  geom_density(aes(x=rmse_delta, group=model, fill=model), 
-               alpha=0.5, adjust=2)+
-  geom_vline(xintercept=0, linetype='dotted')+
-  facet_grid(~model)+xlim(-10,10)+
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+ylims=ggplot_build(null_year_model_plot)$layout$panel_scales_y[[1]]$range$range
 
-ggsave(null_site_model_plot,
-       file='plots/null_site_model_plot.jpg',
-       width=10, height=6)
+spatial_cv_2panel=null_site_model_plot+
+ theme(
+    strip.background = element_blank(),
+    strip.text.y = element_blank(),
+    plot.title = element_text(hjust = 0.5)
+  )+ylim(ylims)+
+  labs(title='spatial variation')
+  #ggtitle('spatial variation')
 
-#or vis like this?
-ggplot(data=tst_year_df, aes(color=model, x=model, y=rmse))+geom_boxplot()+
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+spatial_cv_2panel=grid.arrange(
+  spatial_cv_2panel,
+  nrow = 1,
+  #top = "Predictive performace (spatial variation)",
+  bottom = textGrob(
+    expression(better %<->% worse),
+    gp = gpar(fontface = 3, fontsize = 25),
+    #hjust = 1,
+    just='center'
+    #x = 0.1
+  ))
 
-ggplot(data=tst_site_df, aes(color=model, x=model, y=rmse))+geom_boxplot()+
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+temporal_cv_2panel=null_year_model_plot+
+  labs(y=NULL)+
+  labs(title='temporal variation')+
+  theme(axis.ticks = element_blank(),
+        axis.text.y=element_blank(),
+        plot.title = element_text(hjust = 0.5))
+
+temporal_cv_2panel=grid.arrange(
+  temporal_cv_2panel,
+  nrow = 1,
+  #top = "Predictive performace (spatial variation)",
+  bottom = textGrob(
+    expression(better %<->% worse),
+    gp = gpar(fontface = 3, fontsize = 25),
+    #hjust = 1,
+    just='center'
+    #x = 0.1
+  ))
+
+panelfig_2=cowplot::plot_grid(spatial_cv_2panel, temporal_cv_2panel)
+
+title <- ggdraw() + 
+  draw_label(
+    "Model predictive performance",
+    fontface = 'bold',
+    #x = 0,
+    hjust = 0.5
+  ) +
+  theme(
+    # add margin on the left of the drawing canvas,
+    # so title is aligned with left edge of first plot
+    plot.margin = margin(0, 0, 0, 7)
+  )
+
+panelfig_2=plot_grid(
+  title, panelfig_2,
+  ncol = 1,
+  # rel_heights values control vertical title margins
+  rel_heights = c(0.1, 1)
+)
+
+ggsave("plots/spatial_temporal_cv.jpg", panelfig_2, width=6, heigh=5)
+
+# 
+#   #xlab(expression(paste("better performance - worse performance \n beta[0]")))
+#   #xlab(lab)
+#   #xlab(beta["precipitation"] ~ "\n" ~ "95% CI on parameter estimate)")
+#   #xlab(expression(atop("increasing decreasing", paste("delta" [rmse]))))
+#   #xlab(expression(atop("increasing decreasing", delta[rmse](model - null))))
+#   #xlab(expression(atop(delta[rmse(model - null)], "better<---->worse")))+
+#   #annotation_custom(text_high,xmin=-10,xmax=-10,ymin=-0.07,ymax=-0.07) + 
+#   #annotation_custom(text_low,xmin=10,xmax=10,ymin=-0.07,ymax=-0.07)
+#   
+#     #add intuitive label axis
+#     grid.arrange(
+#       null_year_model_plot,
+#       nrow = 1,
+#       top = "Predictive performace (interannual variation)",
+#       bottom = textGrob(
+#         expression(better %<->% worse),
+#         gp = gpar(fontface = 3, fontsize = 25),
+#         #hjust = 1,
+#         just='center'
+#         #x = 0.1
+#       ))
+#     
+#     
+#   
+#   ,
+#     textGrob(
+#       "better than null",
+#       gp = gpar(fontface = 3, fontsize = 9),
+#       hjust = 0,
+#       x = 1
+#     )
+#   ))
+# 
+# library (cowplot)
+# library (egg)
+# p2 <- add_sub(null_year_model_plot, "better", x = 0, hjust = 0)
+# ggdraw(p2)
+# 
+# p3 <- add_sub(p2 , "worse", x = 1, hjust = 0)
+# ggdraw(p3)
+# 
+# 
+# p3 <- null_year_model_plot + draw_label('something', x = 0.5, y = 0.5, hjust = 0.5, vjust = 0.5,
+#            fontfamily = "", fontface = "plain", color = "black", size = 14,
+#            angle = 0, lineheight = 0.9, alpha = 1)
+# 
+# 
+# 
+# ggsave(null_year_model_plot,
+#        file='plots/null_year_model_plot.jpg',
+#        width=10, height=6)
+# 
+# null_year_model_plot_full = ggplot(data=tst_year_df_wide)+
+#   geom_density(aes(x=rmse_delta, group=model, fill=model), 
+#                alpha=0.5, adjust=2)+
+#   geom_vline(xintercept=0, linetype='dotted')+
+#   facet_grid(~model)+#xlim(-10,10)+
+#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+# 
+# ggsave(null_year_model_plot_full,
+#        file='plots/null_year_model_plot_full.jpg',
+#        width=10, height=6)
+# 
+# 
+# null_site_model_plot = ggplot(data=tst_site_df_wide)+
+#   geom_density(aes(x=rmse_delta, group=model, fill=model), 
+#                alpha=0.5, adjust=2)+
+#   geom_vline(xintercept=0, linetype='dotted')+
+#   facet_grid(~model)+xlim(-10,10)+
+#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+# 
+# ggsave(null_site_model_plot,
+#        file='plots/null_site_model_plot.jpg',
+#        width=10, height=6)
+# 
+# #or vis like this?
+# ggplot(data=tst_year_df, aes(color=model, x=model, y=rmse))+geom_boxplot()+
+#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+# 
+# ggplot(data=tst_site_df, aes(color=model, x=model, y=rmse))+geom_boxplot()+
+#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
