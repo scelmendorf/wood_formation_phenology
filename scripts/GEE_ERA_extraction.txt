@@ -1,0 +1,38 @@
+// Code to extract ECMWF/ERA5/DAILY daily temp, ppt values in Google Earth Engine
+//SCE 2020-08-20, with appreciation to Jakob Assman for comments and corrections on this workflow
+//for a similar project
+
+// The E_2_earth_engine file is created in R and then imported into GEE
+
+var my_points: Table users/scelmendorf/geolocations/E_2_earth_engine
+
+// Import and subset ERA5 ImageCollection
+var era5_2mt = ee.ImageCollection('ECMWF/ERA5/DAILY')
+.select('mean_2m_air_temperature', 'maximum_2m_air_temperature', 'minimum_2m_air_temperature',
+        'total_precipitation')
+.filter(ee.Filter.date('1997-01-01', '2017-01-01'));
+// NB: The dataset currently only contains data till 31 July 2019!
+
+
+
+// Set name just so that the output table is easier to read.
+my_points = my_points.map(function(feature){
+  return feature.set('name', feature.id());
+});
+
+
+// Extract data for (Point) FeatureCollection by maping reduceRegions()
+// over the ERA5 ImageCollection. I use the first() reducer instead of the
+// mean as this makes more sense for point data (as opposed to polygons).
+var ERA5_temp_export = era5_2mt.map(function(image){
+  var temp_data = image.reduceRegions(my_points, ee.Reducer.first());
+  return(temp_data);
+}).flatten();
+
+// Export FC as table to drive.
+Export.table.toDrive({
+  collection: ERA5_temp_export,
+  description: 'ERA_export_pnas_clim_08_20_2020',
+  fileNamePrefix: 'ERA_export_pnas_clim_08_20_2020',
+  fileFormat: 'csv'
+});
