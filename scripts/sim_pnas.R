@@ -1,42 +1,14 @@
-# -- TODO ----
+## 28 Aug 2020 ##
+## SCE ##
 
-# 1 not entirely sure what the units of their ppt are, I couldn't find it
-# maybe it doesn't matter? mean annual is ~908
-#  so guessing mm since "globally averaged annual precipitation over 
-#land is 715 mm"
+# -- NOTES ON DATA ----
+#1
+# Data and metadata do not make clear what the units of their ppt are.
+# Mean annual is ~908 so guessing its mm since "globally averaged annual
+# precipitation over land is 715 mm (by wikipedia). Ppt totals are calculated
+# here with that unit conversion assumption but not used in the final 
+# analyses since it was not a major thrust of the paper
 
-#2 sort out why I get different numbers for daylength than they do. Possibly
-# some sort of rounding error in the lat/longs provided in their table?
-# they are close but not exactly the same though I am using the same package
-#should not matter what timezone you do and indeed it doesn't but I can't match their calcs
-# for (t in seq(-12, 12, by=1)){
-#   cat(t)
-#   cat('\n')
-#   print(insol::daylength(E$lat[1], E$lon[1], E$DOY[1], tmz = t))
-#   cat('\n')
-# }
-# E$photoperiod[1]
-
-# dls=data.frame(doy=c(1:365), photoperiod=NA)
-# for (doy in c(1:365)){
-#   dls$photoperiod[doy]=insol::daylength(lat=48.35, lon=E$lon[1], doy, 1)[3]
-# }
-# 
-# dls_2=data.frame(doy=c(1:365), photoperiod=NA)
-# for (doy in c(1:365)){
-#   dls_2$photoperiod[doy]=insol::daylength(lat=E$lon[1], lon=7.066667, doy, 1)[3]
-# }
-# 
-# E$photoperiod[1]
-# dls$photoperiod[dls$doy==E$DOY[1]] #corresponds to doy ~152 even though the phenodate is 114?
-# dls_2$photoperiod[dls_2$doy==E$DOY[1]] #not just bc they swapped lat long or something obvs
-
-# 3 work on some randomizations, need to think more on how to do it smartly
-# workflow would be simulate responses
-# sample (without replacement - doy from the realized doys), or over sites?
-# calculate x variables
-# run regressions
-# test significance/and or look at % var explained vs in the real data?
 
 # -- BACKGROUND FROM THE PAPER ----
 #https://www.pnas.org/content/early/2020/08/04/2007058117.short
@@ -46,7 +18,6 @@
 #mean temperature was between ?5 and 5 °C, based on the time span commonly
 #used from November 1 in the previous year to the onset date of wood formation (4)
 
-
 #Forcing units 
 #Forcing was computed using a sigmoid function of the average daily
 #air temperature, as follows:
@@ -54,12 +25,19 @@
 #Dfu=28.4/(1+exp(-.185*Tt-18.4)) if T >5, else 0
 
 # -- SETUP ----
+## working directory should be root of this project, all paths then relative
 rm(list=ls())
+lapply(paste("package:", names(sessionInfo()$otherPkgs), sep=""), detach, character.only = TRUE, unload = TRUE)
 
-## working directory should be root of this project
+set.seed (123456)
 
+#path to the reanalysis met data
+#if you do not wish to reextract using GEE  (takes a few hours and requires an
+#account, you can download from gdrive here:
+#https://drive.google.com/file/d/165Owv5gtYrBYTmPJXwPGJx9TSAGP8iLo/view?usp=sharing)
 
-#where the climate data lives if not in your wd
+#this file is too big to be archived on git so you will need to manually
+# add it to this location for the code to run
 ERA_clim_path='data/ERA_export_pnas_clim_08_20_2020.csv'
 
 #set to true if you need to reextract clim data from earth engine
@@ -92,69 +70,11 @@ E_2_earth_engine=E%>%
   select(site, lat, lon)%>%
   distinct()
 
+#this is used as the input to google earth engine code
+#see code scripts/GEE_ERA_extraction.txt
 write.csv(E_2_earth_engine, 'data/E_2_earth_engine.csv',
           row.names=FALSE)
 }
-
-#ran the following GEE code to get the ERA daily data for their lat longs
-#The E_2_earth_engine just has the latlongs
-
-#var my_points: Table users/scelmendorf/geolocations/E_2_earth_engine
-
-# // Import and subset ERA5 ImageCollection
-# var era5_2mt = ee.ImageCollection('ECMWF/ERA5/DAILY')
-# .select('mean_2m_air_temperature', 'maximum_2m_air_temperature', 'minimum_2m_air_temperature', 
-#         'total_precipitation')
-# .filter(ee.Filter.date('1997-01-01', '2017-01-01'));
-# // NB: The dataset currently only contains data till 31 July 2019!
-#   
-#   
-# 
-# // Set name just so that the output table is easier to read.
-# my_points = my_points.map(function(feature){
-#   return feature.set('name', feature.id());
-# });
-# 
-# 
-# // Extract data for (Point) FeatureCollection by maping reduceRegions()
-# // over the ERA5 ImageCollection. I use the first() reducer instead of the
-# // mean as this makes more sense for point data (as opposed to polygons).
-# var ERA5_temp_export = era5_2mt.map(function(image){
-#   var temp_data = image.reduceRegions(my_points, ee.Reducer.first());
-#   return(temp_data);
-# }).flatten(); 
-# 
-# // Export FC as table to drive. 
-# Export.table.toDrive({
-#   collection: ERA5_temp_export,
-#   description: 'ERA_export_pnas_clim_08_20_2020',
-#   fileNamePrefix: 'ERA_export_pnas_clim_08_20_2020',
-#   fileFormat: 'csv'
-# });
-# 
-
-
-
-
-# -- SUBSET FOR EARTH ENGINE ERA EXTRACTION ----
-
-#simulate responses
-# sample (without replacement - doy from the realized doys)
-# calculate x variables
-# run regressions
-# test significance
-
-#Chilling temperatures, which enable plants to release from the dormant state
-#(51), were calculated at each site as the number of days in which the daily
-#mean temperature was between ?5 and 5 °C, based on the time span commonly
-#used from November 1 in the previous year to the onset date of wood formation (4)
-
-
-#Forcing units 
-#Forcing was computed using a sigmoid function of the average daily
-#air temperature, as follows:
-
-#Dfu=28.4/(1+exp(-.185*Tt-18.4)) if T >5, else 0
 
 # -- READ IN AND FORMAT THE CLIM DATA  ----
 
@@ -162,7 +82,13 @@ ERA_clim=read.csv(ERA_clim_path)
 
 #calculate MAT off the ERA data
 # use that as a bias correction for ERAs daily temp data
-#ERA is a little biased high - maybe these more mountainous than grid cell avg
+# following the logic of 
+# (1) Bias correct using the same year if available
+# (2) Bias correct using the next year if same year not available
+# (3) Bias correct using the average of all years if same/next not available
+# always by site location. For temp, adjusted based on the difference in means
+# for ppt, adjusted based on the ratio of differences as ppt cannot be negative
+
 ERA_MAT=ERA_clim%>%
   mutate(date=lubridate::ymd(paste0(substr(system.index,1,4), '-', substr(system.index,5,6),
                                     substr(system.index,7,8))))%>%
@@ -193,18 +119,11 @@ ERA_MAT=ERA_clim%>%
     TRUE ~ MAT_mean))%>%
   mutate(ERA_temp_offset=ERA_MAT-MAT)
 
-  #whi is this one blanek in MAT? Actually should be ok bc it's not a year
-  #that's in the data
-  
-
-#calculate annual total ppt off the ERA data
-# use that as a bias correction for ERAs daily ppt data
-# for some Novs, just use the next year
-# for years where there is no next year data, use the mean
-
-#note there are some oddicites in their data, e.g.
-# they forgot to fill in the ppt for all trees in this site*yr
-# but most have it
+#note there are some oddities in S1 data file, e.g.
+# looks like the ppt for all some trees trees in this site*yr
+# is missing but since it is a site-year level variable and constant
+# for the rest of the measurements at that site*year, assume it was just
+# inadvertently deleted? Does not really affect the results
 #View (E%>%filter(site=='5T1'&year==2002))
 
 ERA_anPPT=ERA_clim%>%
@@ -242,8 +161,8 @@ ERA_anPPT=ERA_clim%>%
 
 
 #define function to accumulate chill from Nov to day-of-event
+# or all days of year (if return_all_doy=TRUE)
 calc_chill=function(phen_data, clim_data, return_all_doy=FALSE){
-  #df$X[duplicated(df$X)]
   df=dplyr::full_join(phen_data, clim_data, by=c('site'='site'))
   if (!return_all_doy){
     df=df%>%
@@ -270,11 +189,13 @@ calc_chill=function(phen_data, clim_data, return_all_doy=FALSE){
   }
   return(df)
 }
+
+#sanity test
 #tst=calc_chill(phen_data, clim_data, return_all_doy=TRUE)
-#sanity test that you didn't break something with nas or blanks
 #sum (duplicated(tst$X))
 
 #define function to accumulate ppt and forcing from Jan 1 to day-of-event
+# or all days of year (if return_all_doy=TRUE)
 calc_ppt_force=function(phen_data, clim_data, return_all_doy=FALSE){
   df=dplyr::full_join(phen_data, clim_data, by=c('site'='site'))
   if (!return_all_doy){
@@ -297,11 +218,12 @@ calc_ppt_force=function(phen_data, clim_data, return_all_doy=FALSE){
   }
   return(df)
 }
+
 #tst=calc_ppt_force(phen_data, clim_data, return_all_doy=TRUE)
 
 
 #define function to recalc all the input variables given the climate data
-# and some potentially randomized phenology data
+# and phenology data
 est_clim=function(phen_data, clim_data, return_all_doy=FALSE){
   if (!return_all_doy){
   #calculate chilling
@@ -315,11 +237,11 @@ est_clim=function(phen_data, clim_data, return_all_doy=FALSE){
     # will NOT work if we randomize among site yrs bc we don't have all the site/yrs for this
     mutate(date_event=as.Date(doy_event-1, origin = paste0(year, '-01-01')))%>%
     mutate(day_of_month=lubridate::day(date_event))%>%
-    #mutate(month_prior_event=lubridate::month(date_event)-1)%>%
     mutate(month_prior_event=ifelse(day_of_month<=15,
                                     lubridate::month(date_event)-1, lubridate::month(date_event)))%>%
     rowwise()%>%
-    mutate(photoperiod=insol::daylength(lat, lon, doy_event, 1)[3])%>%
+    mutate(jday_event=insol::JDymd(lubridate::year(date_event), lubridate::month(date_event), day_of_month))%>%
+    mutate(photoperiod=insol::daylength(lat, lon, jday_event, 1)[3])%>%
     mutate(photoperiod=ifelse(is.finite(photoperiod), photoperiod, 24))%>%
     #sce thought they took the PDSI for the month prior but they took month of
     # you can see by looking at the actual data for 2nd half, pre month for first half
@@ -332,20 +254,8 @@ est_clim=function(phen_data, clim_data, return_all_doy=FALSE){
       month_prior_event == 6 ~ scPDSI6,
       TRUE ~ -9999
     ))%>%
-    # #surely there is a better way to deal with the type conversions here
+    # surely there is a better way to deal with the type conversions here
     mutate(scPDSI_p=ifelse(scPDSI_p==-9999, NA, scPDSI_p))#%>%
-  #this is how I thought they calculated it but this is wrong
-  # mutate(month_event=lubridate::month(date_event))%>%
-  # mutate(scPDSI_p_2=case_when(
-  #   month_event == 1 ~ scPDSI1,
-  #   month_event == 2 ~ scPDSI2,
-  #   month_event == 3 ~ scPDSI3,
-  #   month_event == 4 ~ scPDSI4,
-  #   month_event == 5 ~ scPDSI5,
-  #   month_event == 6 ~ scPDSI6,
-  #   TRUE ~ -9999
-  # ))%>%
-  # mutate(scPDSI_p_2=ifelse(scPDSI_p_2==-9999, NA, scPDSI_p_2))
   }else{
     df=calc_chill(phen_data, clim_data, return_all_doy=TRUE)%>%
       select(-year)%>%
@@ -353,7 +263,8 @@ est_clim=function(phen_data, clim_data, return_all_doy=FALSE){
       full_join(.,  
                 calc_ppt_force(phen_data, clim_data, return_all_doy=TRUE)%>%
                   select(-year)%>%
-                  #this will skip photoperiods for the prior yrs Nov data, I think ok?
+                  #this will skip photoperiods for the prior yrs Nov data
+                  # ok since that is never even close to phenodates
                   rowwise()%>%
                   mutate(photoperiod=insol::daylength(lat, lon, doy, 1)[3])%>%
                   mutate(photoperiod=ifelse(is.finite(photoperiod), photoperiod, 24)))
@@ -361,6 +272,7 @@ est_clim=function(phen_data, clim_data, return_all_doy=FALSE){
   return(df)
 }
 
+#make single climate file with all adjusted clim variables
 ERA_clim=ERA_clim%>%
   mutate(date=lubridate::ymd(paste0(substr(system.index,1,4), '-', substr(system.index,5,6),
                                     substr(system.index,7,8))))%>%
@@ -378,12 +290,10 @@ ERA_clim=ERA_clim%>%
 #View (ERA_clim%>%filter(site=='5T1'&year==2001))
 
 # -- READ IN THE REAL DATA AND MAKE CLIMATE DATA THAT MATCHES IT  ----
-# some noise here bc I used gridded climate data but mostly makes sense
-# there are some errors in (I think their?) photoperiod calculations 
-# in the dataset. 
+
 phen_data=E%>%rename(year_of_event=year, doy_event=DOY)%>%
-  #get rid of thier calcs (though we should at some point check these aren't
-  #ridonc off what we get using ERA as the est)
+  #delete the climate variables used in the manuscript; we will
+  # replace with those derived from ERA for consistency
 select(-Chill0_5, -Chill_5_5,    
        -Chill_5_0, -Chill_10_0, -Force5s, -photoperiod, -PrecipDOY, -scPDSI_p)
 
@@ -392,14 +302,13 @@ clim_data=ERA_clim%>%select(site, year, date, ERA_av_air_temp_C, total_precipita
   mutate(doy=lubridate::yday(date))
 
 #generate our best approximation of their climate data using gridded data
+# i.e. this is real phenology data, but with the forcing variables calculated
+# from ERA rather than local met data
 real_data=est_clim(phen_data, clim_data)
 
 #sanity checks that we calculated right
 #our guesstimates of chilling/forcingpretty close not exact but not super biased
-plot (real_data$Force5s[order(real_data$X)]~E$Force5s[order(E$X)])
-abline(0,1)
-
-valid_ERA_plot=ggplot(data=data.frame(observed_GDD=real_data$Force5s[order(real_data$X)],
+valid_ERA_plot_force=ggplot(data=data.frame(observed_GDD=real_data$Force5s[order(real_data$X)],
            estimated_GDD=E$Force5s[order(E$X)]),
        aes(x=estimated_GDD, y=observed_GDD))+
          geom_point()+
@@ -407,31 +316,51 @@ valid_ERA_plot=ggplot(data=data.frame(observed_GDD=real_data$Force5s[order(real_
   theme(panel.background = element_blank())+
   labs(x = 'estimated GDD from gridded data', y='observed GDD from local sources')
   
-ggsave("plots/valid_ERA_plot.jpg", valid_ERA_plot)
+ggsave("plots/valid_ERA_plot_force.jpg", valid_ERA_plot_force, width=5, height=5)
 
-Metrics::rmse(real_data$Force5s[order(real_data$X)], E$Force5s[order(E$X)])
+#rmse for reference
+#Metrics::rmse(real_data$Force5s[order(real_data$X)], E$Force5s[order(E$X)])
 
-plot (real_data$Chill_5_5[order(real_data$X)]~E$Chill_5_5[order(E$X)])
-abline(0,1)
+valid_ERA_plot_chill=ggplot(data=data.frame(observed_Chill=real_data$Chill_5_5[order(real_data$X)],
+                                      estimated_Chill=E$Chill_5_5[order(E$X)]),
+                      aes(x=estimated_Chill, y=observed_Chill))+
+  geom_point()+
+  geom_abline(intercept = 0, slope = 1)+
+  theme(panel.background = element_blank())+
+  labs(x = 'estimated Chill from gridded data', y='observed Chill from local sources')
+ggsave("plots/valid_ERA_plot_chill.jpg", valid_ERA_plot_chill, width=5, height=5)
 
-#On the other hand, something is wrong w their photoperiod calculations? or mine but I did double check
-plot (real_data$photoperiod[order(real_data$X)]~E$photoperiod[order(E$X)])
-abline(0,1)
+#check we have photoperiod calculated correctly
+valid_photoperiod_plot=ggplot(data=data.frame(S1_photoperiod=real_data$photoperiod[order(real_data$X)],
+                                            estimated_photoperiod=E$photoperiod[order(E$X)]),
+                            aes(x=estimated_photoperiod, y=S1_photoperiod))+
+  geom_point()+
+  geom_abline(intercept = 0, slope = 1)+
+  theme(panel.background = element_blank())+
+  labs(x = 'estimated photoperiod from INSOL package', y='photoperiod from table S1')
+ggsave("plots/valid_ERA_plot_photoperiod.jpg", valid_ERA_plot_chill, width=5, height=5)
 
-#they definitly have photoperiod as a function of site and doy of the event
-# but I can't get the same numbers
-# View (E%>%filter(site==E$site[1])%>%
-#         arrange(DOY, photoperiod))
-
-#scPDSIs now calculated the same
-plot (real_data$scPDSI_p[order(real_data$X)]~E$scPDSI_p[order(E$X)])
-abline(0,1)
+#these should be exact match bc I just looked for the right month
+valid_scPDSI_p_plot=ggplot(data=data.frame(observed_scPDSI_p=real_data$scPDSI_p[order(real_data$X)],
+                                              estimated_scPDSI_p=E$scPDSI_p[order(E$X)]),
+                              aes(x=estimated_scPDSI_p, y=observed_scPDSI_p))+
+  geom_point()+
+  geom_abline(intercept = 0, slope = 1)+
+  theme(panel.background = element_blank())+
+  labs(x = 'estimated _scPDSI_p', y='observed_scPDSI_p')
 
 # -- UNIVARIATE MODEL FITS AND CROSS-VALIDATION  ----
 
 cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=10, prop_drop=.10,
                                                  #need to choose site or year
                                                  by=NULL, choose=FALSE){
+  #' This function does iterative blocked cross validation of phenology predictions
+  #' @param phen_data phenology data
+  #' @param clim_data daily climate data for all sites in phen_data
+  #' @param n_groups number of cv iteractions to do (set only if not using choose method)
+  #' @param prop_drop percentage of blocks to drop in each iteration
+  #' @param by either site or year - how to block subsampling for cross validation
+  #' @param choose if TRUE, do all combinations. Caution this could run for a long time
   real_data=est_clim(phen_data, clim_data)
   out=list()
   if (by=='site'){
@@ -466,19 +395,19 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
     }
     #same thing but drop one CV
     f1=lme4::lmer(Force5s ~ 1 + (1|Species)+(1|site), data = fit_data,
-                  control=lmerControl(optimizer="Nelder_Mead"))
+                  control=lme4::lmerControl(optimizer="Nelder_Mead"))
     f2=lme4::lmer(Chill_5_5 ~ 1 + (1|Species)+(1|site), data = fit_data,
-                  control=lmerControl(optimizer="Nelder_Mead"))
+                  control=lme4::lmerControl(optimizer="Nelder_Mead"))
     f3=lme4::lmer(photoperiod ~ 1 + (1|Species)+(1|site), data = fit_data,
-                  control=lmerControl(optimizer="Nelder_Mead"))
+                  control=lme4::lmerControl(optimizer="Nelder_Mead"))
     f4=lme4::lmer(doy_event ~ MAT + (1|Species)+(1|site), data = fit_data,
-                  control=lmerControl(optimizer="Nelder_Mead"))
+                  control=lme4::lmerControl(optimizer="Nelder_Mead"))
     f5=lme4::lmer(doy_event ~ lat + (1|Species)+(1|site), data = fit_data,
-                  control=lmerControl(optimizer="Nelder_Mead"))
+                  control=lme4::lmerControl(optimizer="Nelder_Mead"))
     f6=lme4::lmer(Force5s ~ lat + (1|Species)+(1|site), data = fit_data,
-                  control=lmerControl(optimizer="Nelder_Mead"))
+                  control=lme4::lmerControl(optimizer="Nelder_Mead"))
     f7=lme4::lmer(doy_event ~ 1 + (1|Species)+(1|site), data = fit_data,
-                  control=lmerControl(optimizer="Nelder_Mead"))
+                  control=lme4::lmerControl(optimizer="Nelder_Mead"))
     val_data$preds_force=predict(f1, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
     val_data$preds_chill=predict(f2, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
     val_data$preds_photoperiod=predict(f3, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
@@ -567,27 +496,20 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
   return(out)
 }
 
-#run - takes a while
-tst_site=cv_forcing_chilling_photoperiod_site_CV(phen_data, clim_data, n_groups=100, prop_drop=0.1,
+#run cross validations - takes a while
+cv_site=cv_forcing_chilling_photoperiod_site_CV(phen_data, clim_data, n_groups=100, prop_drop=0.1,
                                             by='site')
 
-tst_year=cv_forcing_chilling_photoperiod_site_CV(phen_data, clim_data, prop_drop=0.1,
+cv_year=cv_forcing_chilling_photoperiod_site_CV(phen_data, clim_data, prop_drop=0.1,
                                             by='year', choose=TRUE)
 
 #convert to df to plot
-#there's probably better list indexing way to do this
-# it just make a ton of duplicates that you can then ditch
-
-#this for the boxplots
-tst_site_df=data.table::rbindlist(tst_site, idcol='group')%>%
-  select(-sites2use, -years2use)%>%
-  distinct()%>%
-  pivot_longer(cols=-group)%>%
-  rename(model=name, rmse=value)%>%
-  mutate(model=gsub('rmse_', '', model))
+#there's surely a faster list indexing way to do this
+#but this works
+# it just make a ton of duplicates that you can then ditch with distinct()
 
 #this for the density plots
-tst_site_df_wide=data.table::rbindlist(tst_site, idcol='group')%>%
+cv_site_df_wide=data.table::rbindlist(cv_site, idcol='group')%>%
   select(-years2use)%>%
   rename(null_val=rmse_null)%>%
   distinct()%>%  mutate_at(vars(contains('rmse')), .funs = rlang::list2(~. - null_val))%>%
@@ -596,17 +518,12 @@ tst_site_df_wide=data.table::rbindlist(tst_site, idcol='group')%>%
   rename(model=name, rmse_delta=value)%>%
   mutate(model=gsub('rmse_', '', model))
 
-mean(tst_site_df_wide$rmse_delta[tst_site_df_wide$model=='chill'])
-quantile(tst_site_df_wide$rmse_delta[tst_site_df_wide$model=='chill'])
+#report only summary stats for chill as putting them in the figure
+# they are so bad the x axis range has to be huge
+mean(cv_site_df_wide$rmse_delta[cv_site_df_wide$model=='chill'])
+quantile(cv_site_df_wide$rmse_delta[cv_site_df_wide$model=='chill'])
 
-tst_year_df=data.table::rbindlist(tst_year, idcol='group')%>%
-  select(-years2use, -sites2use)%>%
-  distinct()%>%
-  pivot_longer(cols=-group)%>%
-  rename(model=name, rmse=value)%>%
-  mutate(model=gsub('rmse_', '', model))
-
-tst_year_df_wide=data.table::rbindlist(tst_year, idcol='group')%>%
+cv_year_df_wide=data.table::rbindlist(cv_year, idcol='group')%>%
   select(-sites2use)%>%
   rename(null_val=rmse_null)%>%
   distinct()%>%
@@ -617,24 +534,20 @@ tst_year_df_wide=data.table::rbindlist(tst_year, idcol='group')%>%
   mutate(model=gsub('rmse_', '', model))
 
 #these so bad just report the summaries
-mean(tst_year_df_wide$rmse_delta[tst_year_df_wide$model=='chill'])
-quantile(tst_year_df_wide$rmse_delta[tst_year_df_wide$model=='chill'])
+mean(cv_year_df_wide$rmse_delta[cv_year_df_wide$model=='chill'])
+quantile(cv_year_df_wide$rmse_delta[cv_year_df_wide$model=='chill'])
 
-#maybe kind of a p value-like thing off
-# here but I'd rather leave it stats free
-tst_year_df_wide%>%
+#can look at percentage that are better or worse than null if desired
+cv_year_df_wide%>%
   group_by(model)%>%
   summarise(sum(rmse_delta>0)/dplyr::n())
 
-tst_site_df_wide%>%
+cv_site_df_wide%>%
   group_by(model)%>%
   summarise(sum(rmse_delta>0)/dplyr::n())
-
-
-#library (grid)
 
 #note the chill and fall photoperiod so bad you can't even get there
-null_year_model_plot = ggplot(data=tst_year_df_wide%>%
+null_year_model_plot = ggplot(data=cv_year_df_wide%>%
                                 filter(!model%in%c('chill', 'photoperiod_fall',
                                                    'force_lat', 'photoperiod_spring'))%>%
                                 mutate(
@@ -650,30 +563,26 @@ null_year_model_plot = ggplot(data=tst_year_df_wide%>%
   theme(panel.background = element_blank())+
   geom_vline(xintercept=0, linetype='dotted')+
   facet_grid(rows = 'model')+
-  #facet_wrap(~model)+
-  xlim(-15,15)+
+  #xlim(-15,15)+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
   labs(x = expression(delta[rmse(model - null)]))+
   guides(fill=FALSE, color=FALSE)
 
 #add intuitive label axis
-temporal_cv=grid.arrange(
+temporal_cv=gridExtra::grid.arrange(
   null_year_model_plot,
   nrow = 1,
   top = "Predictive performace (interannual variation)",
   bottom = textGrob(
     expression(better %<->% worse),
     gp = gpar(fontface = 3, fontsize = 25),
-    #hjust = 1,
     just='center'
-    #x = 0.1
   ))
 
 ggsave("plots/temporal_cv.jpg", temporal_cv)
 
-
-#note the chill and fall photoperiod so bad you can't even get there
-null_site_model_plot = ggplot(data=tst_site_df_wide%>%
+#repeat for site
+null_site_model_plot = ggplot(data=cv_site_df_wide%>%
                                 filter(!model%in%c('chill', 'photoperiod_fall',
                                                    'force_lat', 'photoperiod_spring'))%>%
                                 mutate(
@@ -689,14 +598,13 @@ null_site_model_plot = ggplot(data=tst_site_df_wide%>%
   theme(panel.background = element_blank())+
   geom_vline(xintercept=0, linetype='dotted')+
   facet_grid(rows = 'model')+
-  #facet_wrap(~model)+
-  xlim(-15,15)+
+  #xlim(-15,15)+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
   labs(x = expression(delta[rmse(model - null)]))+
   guides(fill=FALSE, color=FALSE)
 
 #add intuitive label axis
-spatial_cv=grid.arrange(
+spatial_cv=gridExtra::grid.arrange(
   null_site_model_plot,
   nrow = 1,
   top = "Predictive performace (spatial variation)",
@@ -710,6 +618,9 @@ spatial_cv=grid.arrange(
 
 ggsave("plots/spatial_cv.jpg", spatial_cv)
 
+#figure out range of year models so you can glue them together
+#into a single multi-panel figure but reducing
+# labeling redundancy in cowplot
 ylims=ggplot_build(null_year_model_plot)$layout$panel_scales_y[[1]]$range$range
 
 spatial_cv_2panel=null_site_model_plot+
@@ -719,18 +630,14 @@ spatial_cv_2panel=null_site_model_plot+
     plot.title = element_text(hjust = 0.5)
   )+ylim(ylims)+
   labs(title='spatial variation')
-  #ggtitle('spatial variation')
 
-spatial_cv_2panel=grid.arrange(
+spatial_cv_2panel=gridExtra::grid.arrange(
   spatial_cv_2panel,
   nrow = 1,
-  #top = "Predictive performace (spatial variation)",
   bottom = textGrob(
     expression(better %<->% worse),
     gp = gpar(fontface = 3, fontsize = 25),
-    #hjust = 1,
     just='center'
-    #x = 0.1
   ))
 
 temporal_cv_2panel=null_year_model_plot+
@@ -740,25 +647,22 @@ temporal_cv_2panel=null_year_model_plot+
         axis.text.y=element_blank(),
         plot.title = element_text(hjust = 0.5))
 
-temporal_cv_2panel=grid.arrange(
+temporal_cv_2panel=gridExtra::grid.arrange(
   temporal_cv_2panel,
   nrow = 1,
   #top = "Predictive performace (spatial variation)",
   bottom = textGrob(
     expression(better %<->% worse),
     gp = gpar(fontface = 3, fontsize = 25),
-    #hjust = 1,
     just='center'
-    #x = 0.1
   ))
 
 panelfig_2=cowplot::plot_grid(spatial_cv_2panel, temporal_cv_2panel)
 
-title <- ggdraw() + 
-  draw_label(
+title <- cowplot::ggdraw() + 
+  cowplot::draw_label(
     "Model predictive performance",
     fontface = 'bold',
-    #x = 0,
     hjust = 0.5
   ) +
   theme(
@@ -767,95 +671,12 @@ title <- ggdraw() +
     plot.margin = margin(0, 0, 0, 7)
   )
 
-panelfig_2=plot_grid(
+panelfig_2=cowplot::plot_grid(
   title, panelfig_2,
   ncol = 1,
   # rel_heights values control vertical title margins
   rel_heights = c(0.1, 1)
 )
 
-ggsave("plots/spatial_temporal_cv.jpg", panelfig_2, width=6, heigh=5)
-
-# 
-#   #xlab(expression(paste("better performance - worse performance \n beta[0]")))
-#   #xlab(lab)
-#   #xlab(beta["precipitation"] ~ "\n" ~ "95% CI on parameter estimate)")
-#   #xlab(expression(atop("increasing decreasing", paste("delta" [rmse]))))
-#   #xlab(expression(atop("increasing decreasing", delta[rmse](model - null))))
-#   #xlab(expression(atop(delta[rmse(model - null)], "better<---->worse")))+
-#   #annotation_custom(text_high,xmin=-10,xmax=-10,ymin=-0.07,ymax=-0.07) + 
-#   #annotation_custom(text_low,xmin=10,xmax=10,ymin=-0.07,ymax=-0.07)
-#   
-#     #add intuitive label axis
-#     grid.arrange(
-#       null_year_model_plot,
-#       nrow = 1,
-#       top = "Predictive performace (interannual variation)",
-#       bottom = textGrob(
-#         expression(better %<->% worse),
-#         gp = gpar(fontface = 3, fontsize = 25),
-#         #hjust = 1,
-#         just='center'
-#         #x = 0.1
-#       ))
-#     
-#     
-#   
-#   ,
-#     textGrob(
-#       "better than null",
-#       gp = gpar(fontface = 3, fontsize = 9),
-#       hjust = 0,
-#       x = 1
-#     )
-#   ))
-# 
-# library (cowplot)
-# library (egg)
-# p2 <- add_sub(null_year_model_plot, "better", x = 0, hjust = 0)
-# ggdraw(p2)
-# 
-# p3 <- add_sub(p2 , "worse", x = 1, hjust = 0)
-# ggdraw(p3)
-# 
-# 
-# p3 <- null_year_model_plot + draw_label('something', x = 0.5, y = 0.5, hjust = 0.5, vjust = 0.5,
-#            fontfamily = "", fontface = "plain", color = "black", size = 14,
-#            angle = 0, lineheight = 0.9, alpha = 1)
-# 
-# 
-# 
-# ggsave(null_year_model_plot,
-#        file='plots/null_year_model_plot.jpg',
-#        width=10, height=6)
-# 
-# null_year_model_plot_full = ggplot(data=tst_year_df_wide)+
-#   geom_density(aes(x=rmse_delta, group=model, fill=model), 
-#                alpha=0.5, adjust=2)+
-#   geom_vline(xintercept=0, linetype='dotted')+
-#   facet_grid(~model)+#xlim(-10,10)+
-#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-# 
-# ggsave(null_year_model_plot_full,
-#        file='plots/null_year_model_plot_full.jpg',
-#        width=10, height=6)
-# 
-# 
-# null_site_model_plot = ggplot(data=tst_site_df_wide)+
-#   geom_density(aes(x=rmse_delta, group=model, fill=model), 
-#                alpha=0.5, adjust=2)+
-#   geom_vline(xintercept=0, linetype='dotted')+
-#   facet_grid(~model)+xlim(-10,10)+
-#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-# 
-# ggsave(null_site_model_plot,
-#        file='plots/null_site_model_plot.jpg',
-#        width=10, height=6)
-# 
-# #or vis like this?
-# ggplot(data=tst_year_df, aes(color=model, x=model, y=rmse))+geom_boxplot()+
-#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-# 
-# ggplot(data=tst_site_df, aes(color=model, x=model, y=rmse))+geom_boxplot()+
-#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+ggsave("plots/spatial_temporal_cv.jpg", panelfig_2, width=6, height=5)
 
