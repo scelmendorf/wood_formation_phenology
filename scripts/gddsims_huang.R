@@ -44,7 +44,7 @@ lonz<-unique(dsub$lon)
 
 #fstar <- mean(d$Force5s) #172.23 across all latitudes
 
-#Instead, let fstar vary with lat- Force5s (in their data) depends on latitude
+#Instead of mean, let fstar vary with lat- Force5s (in their data) depends on latitude
 forcelat<-aggregate(d$Force5s, by = list(d$lat), mean)
 colnames(forcelat)<-c("lat","force5s")
 flatmod<-lm(forcelat$force5s~forcelat$lat)
@@ -53,7 +53,7 @@ sigma <- 8
 
 #set up colors for plotting, based on latitude
 latr<-sort(unique(round(latz), digits =0))
-myPalette <- colorRampPalette(brewer.pal(9, "RdYlBu")) #### Gives us a heat map look
+myPalette <- colorRampPalette(brewer.pal(9, "RdYlBu")) 
 
 latcols = myPalette(length(latr))
 coltab=as.data.frame(cbind(latcols,latr))
@@ -63,7 +63,7 @@ lat.to.plot = "48"
 col.to.plot =coltab$latcols[coltab$latr==lat.to.plot]
 figname<-paste("plots/all.lats.huang.png")
 png(figname,height = 800,width = 1400,res = 100)
-par(mfrow=c(2,3))
+par(mfrow=c(2,3),oma = c(1,4,1,1), mar = c(4,5,4,2))
 
 
 #prepare dataframe to summarize climate, phenology across latitudes and sites
@@ -84,8 +84,7 @@ for (l in 1:length(latz)){
     daily_temp <- sapply(yearly_expected_temp, function(x) c(rnorm(daysperseason, meantemp-3, sigma),
            rnorm(daysperinterseason, meantemp - 2, sigma), rnorm(daysperinterseason, meantemp, sigma),
            rnorm(daysperseason+50, meantemp+2, sigma)))#daily mean temperature from winter to spring (warms from mean = 0 (or basetemp - 6) to mean = 6 (or whatever basetemp is))
-    #plot(seq(1:dim(daily_temp)[1]),daily_temp[,1], type = "l")
-       
+
     force = ifelse(daily_temp>5, 28.4/(1+exp(-.185*(daily_temp-18.4))),0)
        
     fureq <- c()
@@ -109,18 +108,18 @@ for (l in 1:length(latz)){
     phen_doy<-phen_dat
     dl<-as.data.frame(daylength(latz[l],lonz[l],phen_jday,8))$daylen#longitude, timezome for Seattle
     if( l==11 & sitelat[j] =="SIM"){
-      plot(forcesum_trunc, phen_doy,pch=21,bg=col.to.plot, 
+      plot(forcesum_trunc, phen_doy,pch=21,col = "darkgray", cex = .5,bg=col.to.plot, 
            xlim = range(forcesum), ylim = range(all_doy),bty="l",
-           xlab="Forcing",ylab="Onset date of wood formation (DOY)",
+           xlab="Forcing (Degree Days)",ylab="Onset of wood formation (DOY)",
            cex.lab = 2, cex.axis = 2)
       for (y in 1:length(yearz)){
         lines(forcesum[,y],all_doy, col = "darkgray", lwd = 1.5)}
       abline(v= fstar, lty = 2, lwd = 2,)
-      points(forcesum_trunc, phen_doy,pch=21,cex = 1.5, col = col.to.plot)
+      points(forcesum_trunc, phen_doy,pch=21,cex = 2, col = "darkgray", bg = col.to.plot)
       
       text(fstar,max(all_doy),"FU", cex = 2)
       
-      mtext("A)", line = 2, adj= 0)
+      mtext("A)", line = 2, adj= 0, cex = 1.8)
     }
     
     #write out csv of daily temp and forcing by year
@@ -144,30 +143,24 @@ dflat$latr<-round(dflat$lat, digits =0)
 
 latdat<-dflat[dflat$latr == lat.to.plot,]
 latcol = coltab$latcols[which(coltab$latr ==lat.to.plot)]
-# plot(latdat$fu,latdat$phen,pch=16,col=latcol, 
-#      xlab="Forcing",ylab="Onset date of wood formation (DOY)",
-#      cex.lab = 2, cex.axis = 2)
-#       m<-lm(latdat$phen~latdat$fu)
-#       if(summary(m)$coef[2,4]<=0.1){abline(m,lwd=2,col="darkgreen")}
-#       mtext(paste("R2 = ",round(summary(m)$r.squared, digits = 2), sep = ""), side = 1,adj = 1, line = -2)
-#       mtext("B)", line = 2, adj= 0)
-#  
- plot(latdat$spat,latdat$phen, pch=16, bty = "l",col = latcol,
-      xlab = "Mean Annual Temperature (C)", ylab = "Onset date of wood formation (DOY)",
+
+ plot(latdat$spat,latdat$phen, pch=21, bty = "l",cex = 2, col = "darkgray", bg = latcol,
+      xlab = expression(paste("Mean Annual Temperature (",degree,"C)")), ylab = "Onset of wood formation (DOY)",
       cex.lab = 2, cex.axis = 2)
      m<-lm(latdat$phen~latdat$spat)
      if(summary(m)$coef[2,4]<=0.1){abline(m,lwd=2, col)}
-     mtext(paste("R2 = ",round(summary(m)$r.squared, digits = 2), sep = ""), side = 1,adj = 1, line = -2)
-     mtext("B)", line = 2, adj= 0)
-  
-  
- plot(latdat$photo, latdat$phen,pch=21,bg=latcol,
-      bty="l",xlab="Photoperiod (hrs)",ylab="Onset date of wood formation (DOY)",
+     r2<-round(summary(m)$r.squared, digits = 2)
+     mtext(bquote(paste('R'^'2'*' = ',.(r2))), side = 3,adj = 1, line = -3)
+     mtext("B)", line = 2, adj= 0, cex = 1.8)
+     
+ plot(latdat$photo, latdat$phen,pch=21,cex = 2, col = "darkgray", bg=latcol,
+      bty="l",xlab="Photoperiod (hrs)",ylab="Onset of wood formation (DOY)",
       cex.lab = 2, cex.axis = 2)
  m<-lm(latdat$phen~latdat$photo)
  if(summary(m)$coef[2,4]<=0.1){abline(m,lwd=2)}
- mtext(paste("R2 = ",round(summary(m)$r.squared, digits = 2), sep = ""), side = 1,adj = 1, line = -2)
- mtext("C)", line = 2, adj= 0)
+ r2<-round(summary(m)$r.squared, digits = 2)
+ mtext(bquote(paste('R'^'2'*' = ',.(r2))), side = 1,adj = 1, line = -3)
+ mtext("C)", line = 2, adj= 0, cex = 1.8)
  
  
  
@@ -176,25 +169,27 @@ latcol = coltab$latcols[which(coltab$latr ==lat.to.plot)]
  dflat<-left_join(dflat,coltab, by = "latr",copy = TRUE)
  
  
- plot(dflat$fu,dflat$phen,pch=16,col=dflat$latcols, 
-      xlab="Forcing",ylab="Onset date of wood formation (DOY)",
+ plot(dflat$fu,dflat$phen,pch=21,bty = "l",cex = 2, col = "darkgray", bg=dflat$latcols, 
+      xlab="Forcing (Degree Days)",ylab="Onset of wood formation (DOY)",
       cex.lab = 2, cex.axis = 2)
  m<-lm(dflat$phen~dflat$fu)
- if(summary(m)$coef[2,4]<=0.1){abline(m,lwd=2,col="darkgray")}
- mtext(paste("R2 = ",round(summary(m)$r.squared, digits = 2), sep = ""), side = 1,adj = 1, line = -2)
- mtext("D)", line = 2, adj= 0)
- 
- plot(dflat$spat,dflat$phen, pch=16, bty = "l",col = dflat$latcols,
-      xlab = "Mean Annual Temperature (C)", ylab = "Onset date of wood formation (DOY)",
+ if(summary(m)$coef[2,4]<=0.1){abline(m,lwd=2)}
+ r2<-round(summary(m)$r.squared, digits = 2)
+ mtext(bquote(paste('R'^'2'*' = ',.(r2))), side = 3,adj = 1, line = -3)
+ mtext("D)", line = 2, adj= 0,cex = 1.8)
+
+ plot(dflat$spat,dflat$phen, pch=21, bty = "l",cex = 2, col = "darkgray",bg  = dflat$latcols,
+      xlab = expression(paste("Mean Annual Temperature (",degree,"C)")), ylab = "Onset of wood formation (DOY)",
       cex.lab = 2, cex.axis = 2)
  m<-lm(dflat$phen~dflat$spat)
- if(summary(m)$coef[2,4]<=0.1){abline(m,lwd=2, col= "darkgray")}
- mtext(paste("R2 = ",round(summary(m)$r.squared, digits = 2), sep = ""), side = 1,adj = 1, line = -2)
- mtext("E)", line = 2, adj= 0)
+ if(summary(m)$coef[2,4]<=0.1){abline(m,lwd=2)}
+ r2<-round(summary(m)$r.squared, digits = 2)
+ mtext(bquote(paste('R'^'2'*' = ',.(r2))), side = 3,adj = 1, line = -3)
  
+  mtext("E)", line = 2, adj= 0, cex = 1.8)
  
- plot(dflat$photo, dflat$phen,pch=21,bg=dflat$latcols,
-      bty="l",xlab="Photoperiod (hrs)",ylab="Onset date of wood formation (DOY)",
+ plot(dflat$photo, dflat$phen,pch=21,cex = 2, col = "darkgray", bg=dflat$latcols,
+      bty="l",xlab="Photoperiod (hrs)",ylab="Onset of wood formation (DOY)",
       cex.lab = 2, cex.axis = 2)
  
  for (l in 1:length(latr)){
@@ -208,10 +203,16 @@ latcol = coltab$latcols[which(coltab$latr ==lat.to.plot)]
    lines(dl, all_doy, col = alpha(latcols[l], alpha = .2), lwd = 2)
  }
  m<-lm(dflat$phen~dflat$photo)
- if(summary(m)$coef[2,4]<=0.1){abline(m,lwd=2, col = "darkgray")}
- mtext(paste("R2 = ",round(summary(m)$r.squared, digits = 2), sep = ""), side = 1,adj = 1, line = -2)
- mtext("F)", line = 2, adj= 0)
- 
- legend("topleft", legend = coltab$latr[c(1,6,11,16,22)], pch = 21, pt.bg = coltab$latcols[c(1,6,11,16,22)], bty = "n") 
+ if(summary(m)$coef[2,4]<=0.1){abline(m,lwd=2)}
+ r2<-round(summary(m)$r.squared, digits = 2)
+ mtext(bquote(paste('R'^'2'*' = ',.(r2))), side = 1,adj = 1, line = -3)
+
+
+ mtext("F)", line = 2, adj= 0, cex = 1.8)
+ legend("topleft", legend = coltab$latr[c(1,5,9,14,18,22)], pch = 21, pt.bg = coltab$latcols[c(1,5,9,14,18,22)], cex=2) 
  
  dev.off()
+ 
+ 
+ 
+ 
