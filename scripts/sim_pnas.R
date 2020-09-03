@@ -1,4 +1,4 @@
-## 28 Aug 2020 ##
+## 2 Sept 2020 ##
 ## SCE ##
 
 #sce fix the chill_5_5 april 30 has a ton of NAs in ther
@@ -27,34 +27,6 @@
 
 #Dfu=28.4/(1+exp(-.185*Tt-18.4)) if T >5, else 0
 
-#summary stats
-# real_data%>%select(site, year_of_event)%>%distinct()%>%group_by(year_of_event)%>%summarize(n=dplyr::n())
-# 
-# #average of 3 yrs per site
-# real_data%>%select(site, year_of_event)%>%distinct()%>%group_by(site)%>%summarize(n=dplyr::n())%>%
-#   pull(n)%>%mean()
-# 
-# real_data%>%select(site, year_of_event)%>%distinct()%>%group_by(site)%>%summarize(n=dplyr::n())%>%
-#   pull(n)%>%range()
-
-
-# #average of 3 yrs per site/spp
-# real_data%>%select(site, year_of_event, Species)%>%distinct()%>%group_by(site,Species)%>%summarize(n=dplyr::n())%>%
-#   pull(n)%>%mean()
-# 
-# real_data%>%select(site, year_of_event, Species)%>%distinct()%>%group_by(site,Species)%>%summarize(n=dplyr::n())%>%
-#   pull(n)%>%range()
-# 
-# hist (real_data$MAT)
-# 
-# tst=real_data%>%select(site, MAT)%>%group_by(site)%>%summarize(MAT=mean(MAT))
-# hist(real_data%>%select(site, MAT)%>%group_by(site)%>%summarize(MAT=mean(MAT)))
-#   pull(n)%>%range()
-
-#todo - consider just making the fake dataset for every site/year, GDD per DOY
-# chilling per doy, photoperiod per DOY and writing out, I think that 
-#would make the validation loop go faster
-
 # -- SETUP ----
 ## working directory should be root of this project, all paths then relative
 rm(list=ls())
@@ -82,12 +54,6 @@ extract_EE=FALSE
 # dplyr
 # insol
 # lme4
-# MuMIn
-# partR2
-
-# Note: to install partR2 package, use the following code (this might take a while). Pls refer to https://github.com/mastoffel/partR2 for more info about partR2 package.
-# install.packages("remotes")
-# remotes::install_github("mastoffel/partR2", build_vignettes = FALSE, dependencies = TRUE) #Set build_vignettes = FALSE for a quick download
 
 library (tidyverse)
 
@@ -204,10 +170,10 @@ ERA_clim=ERA_clim%>%
   mutate(ERA_av_air_temp_C=ERA_av_air_temp_C_unadj-ERA_temp_offset,
          total_precipitation=total_precipitation_unadj/ERA_ppt_offset_perc)
 
-#dropping PPT for now as not always calculable, make a data.frame that is
+#note dropping PPT for now as not a major part of the story
 #site, year, date, GDD to date, chill to date, and chill to april 30
 
-#if this is not broken, you should still have 365 d in this year
+#sanity test for still have 365 d in this year
 #View (ERA_clim%>%filter(site=='5T1'&year==2001))
 
 clim_data=ERA_clim%>%select(site, year, date, ERA_av_air_temp_C, total_precipitation)%>%
@@ -215,15 +181,16 @@ clim_data=ERA_clim%>%select(site, year, date, ERA_av_air_temp_C, total_precipita
   #add in latlong
   left_join(., E%>%select(site, lat, lon)%>%distinct())
 
-
+#cleanup
+rm(ERA_clim)
 
 #define function to accumulate chill from Nov to day-of-event
-# or all days of year (if return_all_doy=TRUE)
+#force from Jan 1 to day of event
+# chill from Nov thru April 30
+#photoperiod for each doy
 
-# clim_data=ERA_clim%>%
-#   left_join(., E%>%select(site, lat, lon)%>%distinct())%>%
-#   filter(site%in%c('5T1', 'SOB'))
-calc_chill_all=function(clim_data){
+
+calc_chill_force_p_all=function(clim_data){
   df_chill=clim_data%>%
     mutate(doy=lubridate::yday(date))%>%
     mutate(water_year=ifelse(doy>304, year+1, year))%>%
@@ -246,23 +213,25 @@ calc_chill_all=function(clim_data){
     ungroup()%>%
     arrange(site, date)%>%
     group_by(site, year)%>%
-    #sce start here, need to fix the rest here
     mutate(Force5s=cumsum(force),
            nday=dplyr::n())%>%
     ungroup()%>%
     mutate(doy=lubridate::yday(date))%>%
     select(site, year, date, Force5s, doy)
+  #add in photoperiod
   df_photoperiod=clim_data%>%
     rowwise()%>%
     mutate(jday=insol::JDymd(lubridate::year(date), lubridate::month(date), 
                                     lubridate::day(date)))%>%
     rowwise()%>%
-    mutate(photoperiod=insol::daylength(lat, lon, jday, 1)[3])%>%
+    #warnings on 24 hour photoperiod ok, solved in next line
+    mutate(photoperiod=suppressWarnings(insol::daylength(lat, lon, jday, 1)[3]))%>%
     mutate(photoperiod=ifelse(is.finite(photoperiod), photoperiod, 24))%>%
     ungroup()%>%
     mutate(doy=lubridate::yday(date))%>%
     select(site, date, doy, photoperiod)
-    
+  
+  #combine  
   df_all=df_force%>%
     left_join(., df_chill)%>%
     left_join(., df_photoperiod)%>%
@@ -276,24 +245,13 @@ calc_chill_all=function(clim_data){
   return(df_all)
 }
 
-# #try running on a big thing
-# # clim_data=ERA_clim%>%
-# #   left_join(., E%>%select(site, lat, lon)%>%distinct())
-# clim_data=calc_chill_all(
-#   ERA_clim%>%
-#     left_join(., E%>%select(site, lat, lon)%>%distinct())
-# )
 
-clim_data=calc_chill_all(
+
+#run in single DOY model for the clim_data we have
+clim_data=calc_chill_force_p_all(
   clim_data
 )
 
-rm(ERA_clim)
-  
-
-#tst=calc_ppt_force(phen_data, clim_data, return_all_doy=TRUE)
-
-#phen_data=phen_data[c(1:5),]
 #define function to either return clim up to a DOY event, or over all doy
 #as needed
 est_clim=function(phen_data, clim_data, return_all_doy=FALSE){
@@ -319,141 +277,60 @@ phen_data=E%>%rename(year_of_event=year, doy_event=DOY)%>%
 # from ERA rather than local met data
 real_data=est_clim(phen_data, clim_data, return_all_doy=FALSE)
 
-# #sce start here w unique
-# # real_data_unique=real_data[!duplicated(real_data[,c('site', 'year_of_event')]),]
-# #   select(site, year)%>%
-# #   distinct()
-# real_sub=phen_data[!duplicated(phen_data[, c('site', 'year_of_event')]),]%>%
-#   est_clim(., clim_data)
-# #sce just make something up
-# site_anom=data.frame(site=unique(real_sub$site), site_anom=rnorm(length(unique(real_sub$site)), 0, 10))
-# real_sub=real_sub%>%
-#   full_join(., site_anom)%>%
-#   rowwise()%>%
-#   mutate(Force5s=172+site_anom+rnorm(1, 0, 10))
-# 
-# real_sub_clim=real_sub%>%
-#   select(X, Species,Type,site,              
-#          lat,lon,alt,Biome,              
-#          year_of_event,tree, doy_event)%>%
-#   est_clim(., clim_data, return_all_doy = TRUE)%>%
-#   select(-doy_event)
-# 
-# 
-# clim_all_doy=est_clim(val_data, clim_data, return_all_doy = TRUE)
-# pred_vs_actual_force=clim_all_doy%>%
-#   rowwise()%>%
-#   filter(Force5s>preds_force&!is.na(Force5s))%>%
-#   group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
-#   summarise(doy_pred=min(doy), .groups='drop')%>%
-#   full_join(clim_all_doy%>%
-#               group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
-#               summarise(doy_event=unique(doy_event), .groups='drop'))%>%
-#   mutate(doy_pred=ifelse(is.na(doy_pred), 365, doy_pred))
-# 
-# 
-# mod=lme4::lmer(Force5s~1 + (1|site), data=real_sub)
-# mean (E$Force5s)
-# sd(E$Force5s)
-# 
-# mod_fake=
-#make up a fake value
 
-#sanity checks that we calculated right
+#sanity checks that using ERA clim is more or less accurate
+# and our photoperiod calcs are correct 
 #our guesstimates of chilling/forcingpretty close not exact but not super biased
-valid_ERA_plot_force=ggplot(data=data.frame(observed_GDD=real_data$Force5s[order(real_data$X)],
-           estimated_GDD=E$Force5s[order(E$X)]),
-       aes(x=estimated_GDD, y=observed_GDD))+
+valid_ERA_plot_force=ggplot(data=data.frame(observed_Force5s=real_data$Force5s[order(real_data$X)],
+           estimated_Force5s=E$Force5s[order(E$X)]),
+       aes(x=estimated_Force5s, y=observed_Force5s))+
          geom_point()+
   geom_abline(intercept = 0, slope = 1)+
-  theme(panel.background = element_blank())+
-  labs(x = 'estimated GDD from gridded data', y='observed GDD from local sources')
+  theme(panel.background = element_rect(fill = "transparent"))+
+  labs(x = 'estimated forcing using gridded data', y='observed forcing from local sources')
   
 ggsave("plots/valid_ERA_plot_force.jpg", valid_ERA_plot_force, width=5, height=5)
 
-#rmse for reference
-#Metrics::rmse(real_data$Force5s[order(real_data$X)], E$Force5s[order(E$X)])
-
-valid_ERA_plot_chill=ggplot(data=data.frame(observed_Chill=real_data$Chill_5_5[order(real_data$X)],
-                                      estimated_Chill=E$Chill_5_5[order(E$X)]),
-                      aes(x=estimated_Chill, y=observed_Chill))+
+valid_ERA_plot_chill=ggplot(data=data.frame(observed_Chill_5_5=real_data$Chill_5_5[order(real_data$X)],
+                                      estimated_Chill_5_5=E$Chill_5_5[order(E$X)]),
+                      aes(x=estimated_Chill_5_5, y=observed_Chill_5_5))+
   geom_point()+
   geom_abline(intercept = 0, slope = 1)+
   theme(panel.background = element_blank())+
-  labs(x = 'estimated Chill from gridded data', y='observed Chill from local sources')
+  labs(x = 'estimated chilling from gridded data', y='observed chilling  from local sources')
 ggsave("plots/valid_ERA_plot_chill.jpg", valid_ERA_plot_chill, width=5, height=5)
 
 #check we have photoperiod calculated correctly
-valid_photoperiod_plot=ggplot(data=data.frame(S1_photoperiod=real_data$photoperiod[order(real_data$X)],
+valid_photoperiod_plot=ggplot(data=data.frame(observed_photoperiod=real_data$photoperiod[order(real_data$X)],
                                             estimated_photoperiod=E$photoperiod[order(E$X)]),
-                            aes(x=estimated_photoperiod, y=S1_photoperiod))+
+                            aes(x=estimated_photoperiod, y=observed_photoperiod))+
   geom_point()+
   geom_abline(intercept = 0, slope = 1)+
   theme(panel.background = element_blank())+
   labs(x = 'estimated photoperiod from INSOL package', y='photoperiod from table S1')
-ggsave("plots/valid_ERA_plot_photoperiod.jpg", valid_ERA_plot_chill, width=5, height=5)
-
-#these should be exact match bc I just looked for the right month
-# valid_scPDSI_p_plot=ggplot(data=data.frame(observed_scPDSI_p=real_data$scPDSI_p[order(real_data$X)],
-#                                               estimated_scPDSI_p=E$scPDSI_p[order(E$X)]),
-#                               aes(x=estimated_scPDSI_p, y=observed_scPDSI_p))+
-#   geom_point()+
-#   geom_abline(intercept = 0, slope = 1)+
-#   theme(panel.background = element_blank())+
-#   labs(x = 'estimated _scPDSI_p', y='observed_scPDSI_p')
-
- # f3=lme4::lmer(photoperiod ~ 1 + (1|Species)+(1|site), data = real_data,
- #               control=lme4::lmerControl(optimizer="Nelder_Mead"))
- # 
- # 
- # f3c=lme4::lmer(photoperiod ~ lat + (lat|Species)+(1|site), data = real_data,
- #               control=lme4::lmerControl(optimizer="Nelder_Mead"))
+ggsave("plots/valid_ERA_plot_photoperiod.jpg", valid_photoperiod_plot, width=5, height=5)
 
 
-# f3d=lme4::lmer(photoperiod ~ lat + (1|Species)+(1|site), data = real_data,
-#               control=lme4::lmerControl(optimizer="Nelder_Mead"))
-
-
-# # a little weird but not too bad
-# qqnorm(resid(f3))
-# plot (resid(f3)~fitted(f3))
-# 
-# #looks pretty linear
-# plot (real_data$photoperiod~fitted(f3))
-# 
-# f3a=lme4::lmer(cos(photoperiod) ~ 1 + (1|Species)+(1|site), data = real_data,
-#               control=lme4::lmerControl(optimizer="Nelder_Mead"))
-# #worse
-# qqnorm(resid(f3a))
-# plot (resid(f3a)~fitted(f3a))
-# plot (cos(real_data$photoperiod)~fitted(f3a))
-# 
-# f3b=lme4::lmer(sin(photoperiod) ~ 1 + (1|Species)+(1|site), data = real_data,
-#                control=lme4::lmerControl(optimizer="Nelder_Mead"))
-# #worse
-# qqnorm(resid(f3b))
-# plot (resid(f3b)~fitted(f3b))
-# 
-# 
-# 
-# hist (cos(real_data$photoperiod))
-# 
-# hist (sin(real_data$photoperiod))
 
 # -- UNIVARIATE MODEL FITS AND CROSS-VALIDATION  ----
-
-cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=10, prop_drop=.10,
-                                                 #need to choose site or year
+#define cross-validation function
+cv_forcing_chilling_photoperiod_CV=function(phen_data, clim_data, n_groups=10, prop_drop=.10,
+                                                 #need to choose by of site or year or year_within_site
+                                                 # year within site seemed more logical than year so 
+                                                 # used that in final sims
                                                  by=NULL, choose=FALSE){
   #' This function does iterative blocked cross validation of phenology predictions
   #' @param phen_data phenology data
   #' @param clim_data daily climate data for all sites in phen_data
   #' @param n_groups number of cv iteractions to do (set only if not using choose method)
-  #' @param prop_drop percentage of blocks to drop in each iteration
-  #' @param by either site or year - how to block subsampling for cross validation
+  #' @param prop_drop percentage of blocks to drop in each iteration, ignored if choose=TRUE
+  #' @param by either site or year or year_within_site - how to block subsampling for cross validation
   #' @param choose if TRUE, do all combinations. Caution this could run for a long time
   real_data=est_clim(phen_data, clim_data, return_all_doy=FALSE)
+  #centering the chill sums to april 30 to help with convergence
   real_data$Chill_5_5_april_30_scale=scale(real_data$Chill_5_5_april)
+  real_data$lat_scale=scale(real_data$lat)
+  real_data$mat_scale=scale(real_data$MAT)
   out=list()
   if (by=='site'){
     sites=unique (real_data$site)
@@ -467,7 +344,6 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
   }
   
   if (choose){
-    #sce add stop logic here
     all_combinations=combn(c(1:length(years)),round((1-prop_drop)*length(years)))
     n_groups=ncol(all_combinations)
   }
@@ -507,7 +383,6 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
         inner_join(., val_data)
     }
     
-    
     #fit a variety of models to the train subset
     f1=lme4::lmer(Force5s ~ 1 + (1|Species)+(1|site), data = fit_data,
                   control=lme4::lmerControl(optimizer="Nelder_Mead"))
@@ -524,30 +399,39 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
     f1f=lme4::lmer(Force5s ~ Chill_5_5_april_30_scale * lat + (1|Species)+(1|site), data = fit_data,
                    control=lme4::lmerControl(optimizer="Nelder_Mead"))
     
-    #this one singular, not enough spp across lats
-    # f1c=lme4::lmer(Force5s ~ lat + (lat|Species)+(1|site), data = fit_data,
-    #                control=lme4::lmerControl(optimizer="Nelder_Mead"))
     f2=lme4::lmer(Chill_5_5 ~ 1 + (1|Species)+(1|site), data = fit_data,
                   control=lme4::lmerControl(optimizer="Nelder_Mead"))
     f3=lme4::lmer(photoperiod ~ 1 + (1|Species)+(1|site), data = fit_data,
                   control=lme4::lmerControl(optimizer="Nelder_Mead"))
     f3a=lme4::lmer(photoperiod ~ MAT + (1|Species)+(1|site), data = fit_data,
                   control=lme4::lmerControl(optimizer="Nelder_Mead"))
+    
+    #this is new
+    f3a1=lme4::lmer(photoperiod ~ mat_scale + (mat_scale|Species)+(1|site), data = fit_data,
+                   control=lme4::lmerControl(optimizer="Nelder_Mead"))
     f3b=lme4::lmer(photoperiod ~ lat + (1|Species)+(1|site), data = fit_data,
                    control=lme4::lmerControl(optimizer="Nelder_Mead"))
-    f3c=lme4::lmer(photoperiod ~ lat + (lat|Species)+(1|site), data = fit_data,
+
+    #this one was breaking when not scaled
+    f3c=lme4::lmer(photoperiod ~ lat_scale + (lat_scale|Species)+(1|site), data = fit_data,
                    control=lme4::lmerControl(optimizer="Nelder_Mead"))
     f4=lme4::lmer(doy_event ~ MAT + (1|Species)+(1|site), data = fit_data,
                   control=lme4::lmerControl(optimizer="Nelder_Mead"))
+    #this is new
+    f4a=lme4::lmer(doy_event ~ mat_scale + (mat_scale|Species)+(1|site), data = fit_data,
+                  control=lme4::lmerControl(optimizer="Nelder_Mead"))
+    
     f5=lme4::lmer(doy_event ~ lat + (1|Species)+(1|site), data = fit_data,
                   control=lme4::lmerControl(optimizer="Nelder_Mead"))
-    # f5a=tryCatch(lme4::lmer(doy_event ~ lat + (lat|Species)+(1|site), data = fit_data,
-    #               control=lme4::lmerControl(optimizer="Nelder_Mead")),
-    #              error=function(cond){return (NULL)})
+    #new
+    f5a= lme4::lmer(doy_event ~ lat_scale + (lat_scale|Species)+(1|site), data = fit_data,
+               control=lme4::lmerControl(optimizer="Nelder_Mead"))
+
     f6=lme4::lmer(doy_event ~ 1 + (1|Species)+(1|site), data = fit_data,
                   control=lme4::lmerControl(optimizer="Nelder_Mead"))
     
     #generate predictions on variety of scales for test subset
+    #forcing suite
     val_data$preds_force=predict(f1, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
     val_data$preds_forcea=predict(f1a, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
     val_data$preds_forceb=predict(f1b, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
@@ -556,41 +440,49 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
     val_data$preds_forcee=predict(f1e, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
     val_data$preds_forcef=predict(f1f, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
     
-    #val_data$preds_forceb=predict(f1b, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    #chill
     val_data$preds_chill=predict(f2, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    
+    #photoperiod suite
     val_data$preds_photoperiod=predict(f3, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
     val_data$preds_photoperioda=predict(f3a, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    val_data$preds_photoperioda1=predict(f3a1, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    
     val_data$preds_photoperiodb=predict(f3b, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
     val_data$preds_photoperiodc=predict(f3c, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    
+    #model doy directly
     val_data$preds_MAT=predict(f4, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    val_data$preds_MATa=predict(f4a, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    
     val_data$preds_lat=predict(f5, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    val_data$preds_lata=predict(f5a, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
+    
+    
     val_data$preds_null=predict(f6, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
-    #val_data$preds_null=predict(f7, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
     val_data=val_data%>%select(X, Species,Type,site,              
                                lat,lon,alt,Biome,              
                                year_of_event,tree,doy_event, preds_force, preds_forcea,
                                preds_forceb,preds_forcec,preds_forced,preds_forcee,preds_forcef,
                                preds_chill, preds_photoperiod,
-                               preds_photoperioda,preds_photoperiodb,preds_photoperiodc,
-                               preds_MAT, preds_lat, preds_null)
+                               preds_photoperioda,preds_photoperioda1,preds_photoperiodb,preds_photoperiodc,
+                               preds_MAT, preds_MATa, preds_lat, preds_lata, preds_null)
     
-    #val_data$preds_photoperiodc=predict(f3c, newdata = val_data, allow.new.levels = TRUE, re.form = NULL)
-    #15
-    #nrow (val_data%>%filter(Species=='ABAL'&site=='AMN'&year_of_event==2007))
-    # Force5s, Chill_5_5, photoperiod for all doys each year each site of validation data
-    # as well as hill_up_to_April_30 for all years
-    clim_all_doy=est_clim(val_data, clim_data, return_all_doy = TRUE)#,
-                          #calc_chill_april_30=TRUE)
+    #daily estimate clim for val data subset
+    clim_all_doy=est_clim(val_data, clim_data, return_all_doy = TRUE)
+    
     pred_vs_actual_force=clim_all_doy%>%
       rowwise()%>%
       filter(Force5s>preds_force&!is.na(Force5s))%>%
       group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
       summarise(doy_pred=min(doy), .groups='drop')%>%
+      #rejoin to real data
       full_join(val_data%>%
                   select(!matches('preds')))%>%
       mutate(doy_pred=ifelse(is.na(doy_pred), 365, doy_pred))
     
     rmse_force=Metrics::rmse(pred_vs_actual_force$doy_event, pred_vs_actual_force$doy_pred)
+    
     pred_vs_actual_chill=clim_all_doy%>%
       rowwise()%>%
       filter(Chill_5_5>preds_chill&!is.na(Chill_5_5))%>%
@@ -599,7 +491,9 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
       full_join(val_data%>%
                   select(!matches('preds')))%>%
       mutate(doy_pred=ifelse(is.na(doy_pred), 303, doy_pred))
+    
     rmse_chill=Metrics::rmse(pred_vs_actual_chill$doy_event, pred_vs_actual_chill$doy_pred)
+    
     pred_vs_actual_photoperiod=clim_all_doy%>%
       rowwise()%>%
       filter(photoperiod>preds_photoperiod&doy>0&doy<=173&!is.na(photoperiod))%>%# take out the late fall vals
@@ -608,9 +502,10 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
       full_join(val_data%>%
                   select(!matches('preds')))%>%
       mutate(doy_pred=ifelse(is.na(doy_pred), 173, doy_pred))
+    
     pred_vs_actual_photoperiod_2=clim_all_doy%>%
       rowwise()%>%
-      filter(photoperiod<preds_photoperiod&doy>173&!is.na(photoperiod))%>%# take out the late fall vals
+      filter(photoperiod<preds_photoperiod&doy>173&!is.na(photoperiod))%>%# include only fall vals
       group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
       summarise(doy_pred_2=min(doy), .groups='drop')%>%
       full_join(val_data%>%
@@ -626,7 +521,7 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
     #lat and photoperiod
     pred_vs_actual_photoperioda=clim_all_doy%>%
       rowwise()%>%
-      filter(photoperiod>preds_photoperioda&doy>0&doy<=173&!is.na(photoperiod))%>%# take out the late fall vals
+      filter(photoperiod>preds_photoperioda&doy>0&doy<=173&!is.na(photoperiod))%>%#
       group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
       summarise(doy_pred=min(doy), .groups='drop')%>%
       full_join(val_data%>%
@@ -634,7 +529,7 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
       mutate(doy_pred=ifelse(is.na(doy_pred), 173, doy_pred))
     pred_vs_actual_photoperiod_2a=clim_all_doy%>%
       rowwise()%>%
-      filter(photoperiod<preds_photoperioda&doy>173&!is.na(photoperiod))%>%# take out the late fall vals
+      filter(photoperiod<preds_photoperioda&doy>173&!is.na(photoperiod))%>%
       group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
       summarise(doy_pred_2=min(doy), .groups='drop')%>%
       full_join(val_data%>%
@@ -648,10 +543,37 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
     rmse_photoperiod_falla=Metrics::rmse(pred_vs_actual_photoperioda$doy_event, pred_vs_actual_photoperioda$doy_pred_2)
     
     
+    ##
+    #photoperiod a1
+    pred_vs_actual_photoperioda1=clim_all_doy%>%
+      rowwise()%>%
+      filter(photoperiod>preds_photoperioda1&doy>0&doy<=173&!is.na(photoperiod))%>%#
+      group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
+      summarise(doy_pred=min(doy), .groups='drop')%>%
+      full_join(val_data%>%
+                  select(!matches('preds')))%>%
+      mutate(doy_pred=ifelse(is.na(doy_pred), 173, doy_pred))
+    pred_vs_actual_photoperiod_2a1=clim_all_doy%>%
+      rowwise()%>%
+      filter(photoperiod<preds_photoperioda1&doy>173&!is.na(photoperiod))%>%
+      group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
+      summarise(doy_pred_2=min(doy), .groups='drop')%>%
+      full_join(val_data%>%
+                  select(!matches('preds')))%>%
+      mutate(doy_pred_2=ifelse(is.na(doy_pred_2), 173, doy_pred_2))
+    pred_vs_actual_photoperioda1=full_join(pred_vs_actual_photoperioda1, pred_vs_actual_photoperiod_2a1)%>%
+      #pick the nearest one spring or fall
+      mutate(doy_pred_all=ifelse(abs(doy_event-doy_pred)<=abs(doy_event-doy_pred_2), doy_pred, doy_pred_2))
+    rmse_photoperiod_alla1=Metrics::rmse(pred_vs_actual_photoperioda1$doy_event, pred_vs_actual_photoperioda1$doy_pred_all)
+    rmse_photoperiod_springa1=Metrics::rmse(pred_vs_actual_photoperioda1$doy_event, pred_vs_actual_photoperioda1$doy_pred)
+    rmse_photoperiod_falla1=Metrics::rmse(pred_vs_actual_photoperioda1$doy_event, pred_vs_actual_photoperioda1$doy_pred_2)
+    
+    ##
+    
     ##next lat by photoperiod
     pred_vs_actual_photoperiodb=clim_all_doy%>%
       rowwise()%>%
-      filter(photoperiod>preds_photoperiodb&doy>0&doy<=173&!is.na(photoperiod))%>%# take out the late fall vals
+      filter(photoperiod>preds_photoperiodb&doy>0&doy<=173&!is.na(photoperiod))%>%
       group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
       summarise(doy_pred=min(doy), .groups='drop')%>%
       full_join(val_data%>%
@@ -659,7 +581,7 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
       mutate(doy_pred=ifelse(is.na(doy_pred), 173, doy_pred))
     pred_vs_actual_photoperiod_2b=clim_all_doy%>%
       rowwise()%>%
-      filter(photoperiod<preds_photoperiodb&doy>173&!is.na(photoperiod))%>%# take out the late fall vals
+      filter(photoperiod<preds_photoperiodb&doy>173&!is.na(photoperiod))%>%
       group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
       summarise(doy_pred_2=min(doy), .groups='drop')%>%
       full_join(val_data%>%
@@ -672,10 +594,10 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
     rmse_photoperiod_springb=Metrics::rmse(pred_vs_actual_photoperiodb$doy_event, pred_vs_actual_photoperiodb$doy_pred)
     rmse_photoperiod_fallb=Metrics::rmse(pred_vs_actual_photoperiodb$doy_event, pred_vs_actual_photoperiodb$doy_pred_2)
     
-    ##next lat by photoperiod
+    ##photoperiodc
     pred_vs_actual_photoperiodc=clim_all_doy%>%
       rowwise()%>%
-      filter(photoperiod>preds_photoperiodc&doy>0&doy<=173&!is.na(photoperiod))%>%# take out the late fall vals
+      filter(photoperiod>preds_photoperiodc&doy>0&doy<=173&!is.na(photoperiod))%>%
       group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
       summarise(doy_pred=min(doy), .groups='drop')%>%
       full_join(val_data%>%
@@ -683,7 +605,7 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
       mutate(doy_pred=ifelse(is.na(doy_pred), 173, doy_pred))
     pred_vs_actual_photoperiod_2c=clim_all_doy%>%
       rowwise()%>%
-      filter(photoperiod<preds_photoperiodc&doy>173&!is.na(photoperiod))%>%# take out the late fall vals
+      filter(photoperiod<preds_photoperiodc&doy>173&!is.na(photoperiod))%>%
       group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
       summarise(doy_pred_2=min(doy), .groups='drop')%>%
       full_join(val_data%>%
@@ -695,20 +617,27 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
     rmse_photoperiod_allc=Metrics::rmse(pred_vs_actual_photoperiodc$doy_event, pred_vs_actual_photoperiodc$doy_pred_all)
     rmse_photoperiod_springc=Metrics::rmse(pred_vs_actual_photoperiodc$doy_event, pred_vs_actual_photoperiodc$doy_pred)
     rmse_photoperiod_fallc=Metrics::rmse(pred_vs_actual_photoperiodc$doy_event, pred_vs_actual_photoperiodc$doy_pred_2)
-    ##
-    
-    
-    #nrow (pred_vs_actual_photoperiodb%>%filter(Species=='ABAL'&site=='AMN'&year_of_event==2007))
+
     pred_vs_actual_MAT=clim_all_doy%>%
       select(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree, doy_event, preds_MAT)%>%
       distinct()%>%filter(!is.na(tree))
-    #nrow (pred_vs_actual_MAT%>%filter(Species=='ABAL'&site=='AMN'&year_of_event==2007))
-    
     rmse_MAT=Metrics::rmse(pred_vs_actual_MAT$doy_event, pred_vs_actual_MAT$preds_MAT)
+    
+    pred_vs_actual_MATa=clim_all_doy%>%
+      select(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree, doy_event, preds_MATa)%>%
+      distinct()%>%filter(!is.na(tree))
+    rmse_MATa=Metrics::rmse(pred_vs_actual_MATa$doy_event, pred_vs_actual_MATa$preds_MATa)
+    
     pred_vs_actual_lat=clim_all_doy%>%
       select(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree, doy_event, preds_lat)%>%
       distinct()%>%filter(!is.na(tree))
     rmse_lat=Metrics::rmse(pred_vs_actual_lat$doy_event, pred_vs_actual_lat$preds_lat)
+    
+    pred_vs_actual_lata=clim_all_doy%>%
+      select(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree, doy_event, preds_lata)%>%
+      distinct()%>%filter(!is.na(tree))
+    rmse_lata=Metrics::rmse(pred_vs_actual_lata$doy_event, pred_vs_actual_lata$preds_lata)
+    
     pred_vs_actual_forcea=clim_all_doy%>%
       rowwise()%>%
       filter(Force5s>preds_forcea&!is.na(Force5s))%>%
@@ -757,13 +686,6 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
       mutate(doy_pred=ifelse(is.na(doy_pred), 365, doy_pred))
     rmse_forcef=Metrics::rmse(pred_vs_actual_forcef$doy_event, pred_vs_actual_forcef$doy_pred)
     
-    # pred_vs_actual_forceb=clim_all_doy%>%
-    #   rowwise()%>%
-    #   filter(Force5s>preds_forceb&!is.na(Force5s))%>%
-    #   group_by(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree)%>%
-    #   summarise(doy_pred=min(doy), doy_event=unique(doy_event), .groups='drop')%>%
-    #   mutate(doy_pred=ifelse(is.na(doy_pred), 365, doy_pred))
-    #rmse_forceb=Metrics::rmse(pred_vs_actual_forceb$doy_event, pred_vs_actual_forceb$doy_pred)
     pred_vs_actual_null=clim_all_doy%>%
       select(Species, Type, site, lat, lon, alt, Biome, year_of_event, tree, doy_event, preds_null)%>%
       distinct()%>%filter(!is.na(tree))
@@ -783,38 +705,35 @@ cv_forcing_chilling_photoperiod_site_CV=function(phen_data, clim_data, n_groups=
                   rmse_photoperiod_fall=rmse_photoperiod_fall,
                   rmse_photoperiod_alla=rmse_photoperiod_alla, rmse_photoperiod_springa=rmse_photoperiod_springa,
                   rmse_photoperiod_falla=rmse_photoperiod_falla,
+                  rmse_photoperiod_alla1=rmse_photoperiod_alla1, rmse_photoperiod_springa1=rmse_photoperiod_springa1,
+                  rmse_photoperiod_falla1=rmse_photoperiod_falla1,
                   rmse_photoperiod_allb=rmse_photoperiod_allb, rmse_photoperiod_springb=rmse_photoperiod_springb,
                   rmse_photoperiod_fallb=rmse_photoperiod_fallb,
                   rmse_photoperiod_allc=rmse_photoperiod_allc, rmse_photoperiod_springc=rmse_photoperiod_springc,
                   rmse_photoperiod_fallc=rmse_photoperiod_fallc,
-                  rmse_MAT=rmse_MAT, rmse_lat=rmse_lat,
-                  #rmse_force_lat=rmse_force_lat,
+                  rmse_MAT=rmse_MAT, rmse_MATa=rmse_MATa, rmse_lat=rmse_lat,rmse_lata=rmse_lata,
                   rmse_null=rmse_null)
   }
   close(pb)
   return(out)
 }
 
-#sce note doign photoperioda and b as a function of latitude doesnt really help at all, still sucks
-
 #run cross validations - takes a while
-#4 warnings when you do this
-#and some singularities, need to make it try/kill but just for now let's see
-cv_site=cv_forcing_chilling_photoperiod_site_CV(phen_data, clim_data, n_groups=100, prop_drop=0.1,
+#lots of info messages on the join which you can ignore
+# the pbar is somewhat helpful to know how long you have to go
+# if using this more it would benefit from being parallelized...
+
+cv_site=cv_forcing_chilling_photoperiod_CV(phen_data, clim_data, n_groups=100, prop_drop=0.1,
                                             by='site')
-saveRDS (cv_site, 'cv_site.rds')
-# cv_site=cv_forcing_chilling_photoperiod_site_CV(phen_data, clim_data, n_groups=10, prop_drop=0.1,
-#                                                 by='site')
+saveRDS (cv_site, 'calculations/cv_site.rds')
 
-
-# cv_year=cv_forcing_chilling_photoperiod_site_CV(phen_data, clim_data, prop_drop=0.1,
-#                                             by='year', choose=TRUE)
 
 # 7 warning suggestsions on model identifiability
 # could try scaling or just ignore...
-cv_year_within_site=cv_forcing_chilling_photoperiod_site_CV(phen_data, clim_data, n_groups=100,
+#2 boundary fit warns, ignore for now
+cv_year_within_site=cv_forcing_chilling_photoperiod_CV(phen_data, clim_data, n_groups=100,
                                                 by='year_within_site', choose=FALSE)
-saveRDS (cv_year_within_site, 'cv_year_within_site.rds')
+saveRDS (cv_year_within_site, 'calculations/cv_year_within_site.rds')
 #sce add progress bar for the impatient
 #https://ryouready.wordpress.com/2009/03/16/r-monitor-function-progress-with-a-progress-bar/
 
@@ -838,7 +757,7 @@ cv_site_df_wide=data.table::rbindlist(cv_site, idcol='group')%>%
 #report only summary stats for chill as putting them in the figure
 # they are so bad the x axis range has to be huge
 mean(cv_site_df_wide$rmse_delta[cv_site_df_wide$model=='chill'])
-quantile(cv_site_df_wide$rmse_delta[cv_site_df_wide$model=='chill'])
+quantile(cv_site_df_wide$rmse_delta[cv_site_df_wide$model=='chill'], c(0.05, 0.95))
 
 # cv_year_df_wide=data.table::rbindlist(cv_year, idcol='group')%>%
 #   select(-sites2use)%>%
@@ -850,9 +769,7 @@ quantile(cv_site_df_wide$rmse_delta[cv_site_df_wide$model=='chill'])
 #   rename(model=name, rmse_delta=value)%>%
 #   mutate(model=gsub('rmse_', '', model))
 
-#these so bad just report the summaries
-mean(cv_year_df_wide$rmse_delta[cv_year_df_wide$model=='chill'])
-quantile(cv_year_df_wide$rmse_delta[cv_year_df_wide$model=='chill'])
+
 
 cv_year_within_site_df_wide=data.table::rbindlist(cv_year_within_site, idcol='group')%>%
   select(-sites2use, -years2use)%>%
@@ -864,19 +781,25 @@ cv_year_within_site_df_wide=data.table::rbindlist(cv_year_within_site, idcol='gr
   rename(model=name, rmse_delta=value)%>%
   mutate(model=gsub('rmse_', '', model))
 
+#these so bad just report the summaries
+mean(cv_year_within_site_df_wide$rmse_delta[cv_year_within_site_df_wide$model=='chill'])
+quantile(cv_year_within_site_df_wide$rmse_delta[cv_year_within_site_df_wide$model=='chill'],
+         c(0.05, 0.95))
+
 
 #can look at percentage that are better or worse than null if desired
-cv_year_df_wide%>%
-  group_by(model)%>%
-  summarise(sum(rmse_delta>0)/dplyr::n())
+# cv_year_df_wide%>%
+#   group_by(model)%>%
+#   summarise(sum(rmse_delta>0)/dplyr::n())
 
 View(cv_site_df_wide%>%
   group_by(model)%>%
   summarise(sum(rmse_delta>0)/dplyr::n()))
 
-cv_year_within_site_df_wide%>%
+View(cv_year_within_site_df_wide%>%
   group_by(model)%>%
-  summarise(sum(rmse_delta>0)/dplyr::n())
+  summarise(prop_better_than_null=sum(rmse_delta>0)/dplyr::n()))
+
 
 
 # #note the chill and fall photoperiod so bad you can't even get there
@@ -902,62 +825,51 @@ cv_year_within_site_df_wide%>%
 #   guides(fill=FALSE, color=FALSE)
 
 #note the chill and fall photoperiod so bad you can't even get there
-null_year_model_plot2 = ggplot(data=cv_year_within_site_df_wide#%>%
-                                # filter(!model%in%c('chill', 'photoperiod_fall',
-                                #                    'force_lat', 'photoperiod_spring'))%>%
-                                # mutate(
-                                #   model=case_when(
-                                #     model=='force' ~ 'Forcing',
-                                #     model=='lat' ~ 'Latitude',
-                                #     model=='photoperiod_all' ~ 'Photoperiod',
-                                #     model=='MAT' ~ 'MAT',
-                                #     TRUE ~ 'NA')
-                                # )
+
+insets_year_all=cv_year_within_site_df_wide%>%
+  group_by(model)%>%
+  summarise(prop_worse_than_null=sum(rmse_delta>0)/dplyr::n())%>%
+              filter(model%in%c('force', 'forcea',
+                                'forceb', 'forcee',
+                                'photoperiod_all',
+                                'photoperiod_alla',
+                                'photoperiod_allb',
+                                'lat', 'MAT'))%>%
+              mutate(
+                model=case_when(
+                  model=='force' ~ 'forcing',
+                  model=='forcea' ~ 'forcing by lat',
+                  model=='forceb' ~ 'forcing by chill',
+                  model=='forcee' ~ 'forcing by chill and lat',
+                  model=='lat' ~ 'latitude',
+                  model=='photoperiod_all' ~ 'photoperiod',
+                  model=='photoperiod_alla' ~ 'photoperiod by MAT',
+                  model=='photoperiod_allb' ~ 'photoperiod by lat',
+                  model=='MAT' ~ 'MAT',
+                  TRUE ~ 'NA')
+              )
+
+null_year_model_plot = ggplot(data=cv_year_within_site_df_wide%>%
+                                filter(model%in%c('force', 'forcea',
+                                                  'forceb', 'forcee',
+                                                  'photoperiod_all',
+                                                  'photoperiod_alla',
+                                                  'photoperiod_allb',
+                                                  'lat', 'MAT'))%>%
+                                mutate(
+                                  model=case_when(
+                                    model=='force' ~ 'forcing',
+                                    model=='forcea' ~ 'forcing by lat',
+                                    model=='forceb' ~ 'forcing by chill',
+                                    model=='forcee' ~ 'forcing by chill and lat',
+                                    model=='lat' ~ 'latitude',
+                                    model=='photoperiod_all' ~ 'photoperiod',
+                                    model=='photoperiod_alla' ~ 'photoperiod by MAT',
+                                    model=='photoperiod_allb' ~ 'photoperiod by lat',
+                                    model=='MAT' ~ 'MAT',
+                                    TRUE ~ 'NA')
+                                )
                                )+
-  geom_density(aes(x=rmse_delta, group=model, fill=model, color=model), 
-               alpha=0.5, adjust=2)+
-  theme(panel.background = element_blank())+
-  geom_vline(xintercept=0, linetype='dotted')+
-  #facet_grid(rows = 'model')+
-  facet_wrap(~model, ncol = 2)+
-  xlim(-10,10)+
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
-  labs(x = expression(delta[rmse(model - null)]))+
-  guides(fill=FALSE, color=FALSE)
-
-ggsave("plots/null_year_model_plot2.jpg", null_year_model_plot2, height=12, width=6)
-
-
-
-#add intuitive label axis
-temporal_cv=gridExtra::grid.arrange(
-  null_year_model_plot,
-  nrow = 1,
-  top = "Predictive performace (interannual variation)",
-  bottom = textGrob(
-    expression(better %<->% worse),
-    gp = gpar(fontface = 3, fontsize = 25),
-    just='center'
-  ))
-
-ggsave("plots/temporal_cv.jpg", temporal_cv)
-
-#repeat for site
-#sce notes they still all look terrible,
-#Photoperiod a is a little better but still really bad
-#spring better than all so check code
-null_site_model_plot = ggplot(data=cv_site_df_wide)+#%>%
-                                #filter(!model%in%c('chill', 'photoperiod_fall',
-                                #                   'force_lat', 'photoperiod_spring'))+#%>%
-                                #mutate(
-                                #  model=case_when(
-                                #    model=='force' ~ 'Forcing',
-                                #    model=='lat' ~ 'Latitude',
-                                #    model=='photoperiod_all' ~ 'Photoperiod',
-                                #    model=='MAT' ~ 'MAT',
-                                #    TRUE ~ 'NA')
-                                #)
-                              #)+
   geom_density(aes(x=rmse_delta, group=model, fill=model, color=model), 
                alpha=0.5, adjust=2)+
   theme(panel.background = element_blank())+
@@ -967,9 +879,188 @@ null_site_model_plot = ggplot(data=cv_site_df_wide)+#%>%
   xlim(-15,15)+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
   labs(x = expression(delta[rmse(model - null)]))+
-  guides(fill=FALSE, color=FALSE)
+  guides(fill=FALSE, color=FALSE)+
+  geom_text(data=insets, aes(x=10, y=4, label=prop_worse_than_null), size=3)
 
-ggsave("plots/null_site_model_plot.jpg", null_site_model_plot, height=12, width=6)
+ggsave("plots/null_year_model_plot.jpg", null_year_model_plot2, height=12, width=6)
+
+##
+insets_year_subset=cv_year_within_site_df_wide%>%
+  group_by(model)%>%
+  summarise(prop_worse_than_null=sum(rmse_delta>0)/dplyr::n())%>%
+  filter(model%in%c('force', 
+                      'photoperiod_all',
+                      'lat', 'MAT'))%>%
+  mutate(
+    model=case_when(
+      model=='force' ~ 'forcing',
+      model=='lat' ~ 'latitude',
+      model=='photoperiod_all' ~ 'photoperiod',
+      model=='MAT' ~ 'MAT',
+      TRUE ~ 'NA')
+  )
+
+#just select subset for paper
+null_year_model_plot_subset = ggplot(data=cv_year_within_site_df_wide%>%
+                                 filter(model%in%c('force', 
+                                                   'photoperiod_all',
+                                                   'lat', 'MAT'))%>%
+                                 mutate(
+                                   model=case_when(
+                                     model=='force' ~ 'forcing',
+                                     model=='lat' ~ 'latitude',
+                                     model=='photoperiod_all' ~ 'photoperiod',
+                                     model=='MAT' ~ 'MAT',
+                                     TRUE ~ 'NA')
+                                 )
+)+
+  geom_density(aes(x=rmse_delta, group=model, fill=model, color=model), 
+               alpha=0.5, adjust=2)+
+  theme(panel.background = element_blank())+
+  geom_vline(xintercept=0, linetype='dotted')+
+  facet_grid(rows = 'model')+
+  #facet_wrap(~model, ncol = 1)+
+  xlim(-15,15)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  labs(x = expression(delta[rmse(model - null)]))+
+  guides(fill=FALSE, color=FALSE)+
+  geom_text(data=insets_year_subset, aes(x=10, y=4, label=prop_worse_than_null), size=3)
+
+ggsave("plots/null_year_model_plot_subset.jpg",null_year_model_plot_subset, height=12, width=6)
+
+insets_site_all=cv_site_df_wide%>%
+  group_by(model)%>%
+  summarise(prop_worse_than_null=sum(rmse_delta>0)/dplyr::n())%>%
+  filter(model%in%c('force', 'forcea',
+                    'forceb', 'forcee',
+                    'photoperiod_all',
+                    'photoperiod_alla',
+                    'photoperiod_allb',
+                    'lat', 'MAT'))%>%
+  mutate(
+    model=case_when(
+      model=='force' ~ 'forcing',
+      model=='forcea' ~ 'forcing by lat',
+      model=='forceb' ~ 'forcing by chill',
+      model=='forcee' ~ 'forcing by chill and lat',
+      model=='lat' ~ 'latitude',
+      model=='photoperiod_all' ~ 'photoperiod',
+      model=='photoperiod_alla' ~ 'photoperiod by MAT',
+      model=='photoperiod_allb' ~ 'photoperiod by lat',
+      model=='MAT' ~ 'MAT',
+      TRUE ~ 'NA')
+  )
+
+null_site_model_plot = ggplot(data=cv_site_df_wide%>%
+  filter(model%in%c('force', 'forcea',
+                    'forceb', 'forcee',
+                    'photoperiod_all',
+                    'photoperiod_alla',
+                    'photoperiod_allb',
+                    'lat', 'MAT'))%>%
+  mutate(
+    model=case_when(
+      model=='force' ~ 'forcing',
+      model=='forcea' ~ 'forcing by lat',
+      model=='forceb' ~ 'forcing by chill',
+      model=='forcee' ~ 'forcing by chill and lat',
+      model=='lat' ~ 'latitude',
+      model=='photoperiod_all' ~ 'photoperiod',
+      model=='photoperiod_alla' ~ 'photoperiod by MAT',
+      model=='photoperiod_allb' ~ 'photoperiod by lat',
+      model=='MAT' ~ 'MAT',
+      TRUE ~ 'NA')))+
+  geom_density(aes(x=rmse_delta, group=model, fill=model, color=model), 
+               alpha=0.5, adjust=2)+
+  theme(panel.background = element_blank())+
+  geom_vline(xintercept=0, linetype='dotted')+
+  facet_grid(rows = 'model')+
+  #facet_wrap(~model, ncol = 2)+
+  xlim(-20,20)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  labs(x = expression(delta[rmse(model - null)]))+
+  guides(fill=FALSE, color=FALSE)+
+  geom_text(data=insets_site_all, aes(x=10, y=0.3, label=prop_worse_than_null), size=3)
+
+
+insets_site_subset=cv_site_df_wide%>%
+  group_by(model)%>%
+  summarise(prop_worse_than_null=sum(rmse_delta>0)/dplyr::n())%>%
+  filter(model%in%c('force', 
+                    'photoperiod_all',
+                    'lat', 'MAT'))%>%
+  mutate(
+    model=case_when(
+      model=='force' ~ 'forcing',
+      model=='lat' ~ 'latitude',
+      model=='photoperiod_all' ~ 'photoperiod',
+      model=='MAT' ~ 'MAT',
+      TRUE ~ 'NA')
+  )
+
+#just select subset for paper
+null_site_model_plot_subset = ggplot(data=cv_site_df_wide%>%
+                                       filter(model%in%c('force', 
+                                                         'photoperiod_all',
+                                                         'lat', 'MAT'))%>%
+                                       mutate(
+                                         model=case_when(
+                                           model=='force' ~ 'forcing',
+                                           model=='lat' ~ 'latitude',
+                                           model=='photoperiod_all' ~ 'photoperiod',
+                                           model=='MAT' ~ 'MAT',
+                                           TRUE ~ 'NA')
+                                       )
+)+
+  geom_density(aes(x=rmse_delta, group=model, fill=model, color=model), 
+               alpha=0.5, adjust=2)+
+  theme(panel.background = element_blank())+
+  geom_vline(xintercept=0, linetype='dotted')+
+  facet_grid(rows = 'model')+
+  #facet_wrap(model, ncol = 1)+
+  xlim(-20,20)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  labs(x = expression(delta[rmse(model - null)]))+
+  guides(fill=FALSE, color=FALSE)+
+  geom_text(data=insets_site_subset, aes(x=10, y=0.3, label=prop_worse_than_null), size=3)
+
+
+#combine plots
+joint_plot=
+  egg::ggarrange(null_site_model_plot_subset+
+                   ggtitle("spatial")+
+                   theme(plot.title = element_text(hjust = 0.5),
+                         axis.title.x = element_blank(),
+                         strip.background = element_blank(),
+                         strip.text.y = element_blank()),
+                 null_year_model_plot_subset + 
+                   ggtitle("temporal")+
+                   theme(plot.title = element_text(hjust = 0.5))+
+                   theme(#axis.text.y = element_blank(),
+                         #axis.ticks.y = element_blank(),
+                         axis.title.y = element_blank(),
+                         axis.title.x = element_blank(),
+                         strip.text.y = element_text(size = 14)),
+                 nrow = 1, labels = c('a', 'b'),
+bottom = grid::textGrob(
+  #this works
+  #paste0('delta \n', expression(better %<->% worse)),
+  #this does not work
+  #paste0(expression(delta[rmse(model - null)]), '\n', expression(better %<->% worse)),
+  expression(atop(delta[rmse(model - null)], better %<->% worse)),
+  #expression(better %<->% worse),
+  #expression(delta[rmse(model - null)] \n better %<->% worse),
+  #expression(paste('delta \n', better %<->% worse)),
+  gp = grid::gpar(fontface = 3, fontsize = 18),
+  #hjust = 1,
+  just='center'
+  #x = 0.1
+))
+
+ggsave("plots/joint_plot.jpg", joint_plot, height=12, width=8)
+
+
+
 
 #add intuitive label axis
 spatial_cv=gridExtra::grid.arrange(
@@ -977,7 +1068,7 @@ spatial_cv=gridExtra::grid.arrange(
   nrow = 1,
   top = "Predictive performace (spatial variation)",
   bottom = textGrob(
-    expression(better %<->% worse),
+    paste0('delta \n', expression(better %<->% worse)),
     gp = gpar(fontface = 3, fontsize = 25),
     #hjust = 1,
     just='center'
@@ -985,6 +1076,8 @@ spatial_cv=gridExtra::grid.arrange(
   ))
 
 ggsave("plots/spatial_cv.jpg", spatial_cv)
+
+
 
 #figure out range of year models so you can glue them together
 #into a single multi-panel figure but reducing
