@@ -849,40 +849,35 @@ insets_year_all=cv_year_within_site_df_wide%>%
                   TRUE ~ 'NA')
               )
 
-null_year_model_plot = ggplot(data=cv_year_within_site_df_wide%>%
-                                filter(model%in%c('force', 'forcea',
+null_year_model_plot_si = ggplot(data=cv_year_within_site_df_wide%>%
+                                filter(model%in%c(#'chill',
+                                                  'forcea',
                                                   'forceb', 'forcee',
-                                                  'photoperiod_all',
                                                   'photoperiod_alla',
-                                                  'photoperiod_allb',
-                                                  'lat', 'MAT'))%>%
+                                                  'photoperiod_allb'))%>%
                                 mutate(
                                   model=case_when(
-                                    model=='force' ~ 'forcing',
+                                    #model=='chill' ~ 'chilling',
                                     model=='forcea' ~ 'forcing by lat',
                                     model=='forceb' ~ 'forcing by chill',
                                     model=='forcee' ~ 'forcing by chill and lat',
-                                    model=='lat' ~ 'latitude',
-                                    model=='photoperiod_all' ~ 'photoperiod',
                                     model=='photoperiod_alla' ~ 'photoperiod by MAT',
                                     model=='photoperiod_allb' ~ 'photoperiod by lat',
-                                    model=='MAT' ~ 'MAT',
                                     TRUE ~ 'NA')
                                 )
                                )+
   geom_density(aes(x=rmse_delta, group=model, fill=model, color=model), 
-               alpha=0.5, adjust=2)+
+               alpha=0.5, adjust=1.5)+
   theme(panel.background = element_blank())+
   geom_vline(xintercept=0, linetype='dotted')+
-  #facet_grid(rows = 'model')+
-  facet_wrap(~model, ncol = 2)+
-  xlim(-15,15)+
+  facet_grid(rows = 'model', scales='free_x')+
+  #facet_wrap(~model, ncol = 2)+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
   labs(x = expression(delta[rmse(model - null)]))+
-  guides(fill=FALSE, color=FALSE)+
-  geom_text(data=insets, aes(x=10, y=4, label=prop_worse_than_null), size=3)
+  guides(fill=FALSE, color=FALSE)#+
+  #geom_text(data=insets, aes(x=10, y=4, label=prop_worse_than_null), size=3)
 
-ggsave("plots/null_year_model_plot.jpg", null_year_model_plot2, height=12, width=6)
+ggsave("plots/null_year_model_plot_si.jpg", null_year_model_plot2, height=12, width=6)
 
 ##
 insets_year_subset=cv_year_within_site_df_wide%>%
@@ -918,13 +913,13 @@ null_year_model_plot_subset = ggplot(data=cv_year_within_site_df_wide%>%
                alpha=0.5, adjust=2)+
   theme(panel.background = element_blank())+
   geom_vline(xintercept=0, linetype='dotted')+
-  facet_grid(rows = 'model')+
+  facet_grid(rows = 'model', scales='free_y')+
   #facet_wrap(~model, ncol = 1)+
   xlim(-15,15)+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
   labs(x = expression(delta[rmse(model - null)]))+
-  guides(fill=FALSE, color=FALSE)+
-  geom_text(data=insets_year_subset, aes(x=10, y=4, label=prop_worse_than_null), size=3)
+  guides(fill=FALSE, color=FALSE)#+
+  #geom_text(data=insets_year_subset, aes(x=10, y=4, label=prop_worse_than_null), size=3)
 
 ggsave("plots/null_year_model_plot_subset.jpg",null_year_model_plot_subset, height=12, width=6)
 
@@ -951,52 +946,35 @@ insets_site_all=cv_site_df_wide%>%
       TRUE ~ 'NA')
   )
 
-null_site_model_plot = ggplot(data=cv_site_df_wide%>%
-  filter(model%in%c('force', 'forcea',
-                    'forceb', 'forcee',
-                    'photoperiod_all',
-                    'photoperiod_alla',
-                    'photoperiod_allb',
-                    'lat', 'MAT'))%>%
-  mutate(
-    model=case_when(
-      model=='force' ~ 'forcing',
-      model=='forcea' ~ 'forcing by lat',
-      model=='forceb' ~ 'forcing by chill',
-      model=='forcee' ~ 'forcing by chill and lat',
-      model=='lat' ~ 'latitude',
-      model=='photoperiod_all' ~ 'photoperiod',
-      model=='photoperiod_alla' ~ 'photoperiod by MAT',
-      model=='photoperiod_allb' ~ 'photoperiod by lat',
-      model=='MAT' ~ 'MAT',
-      TRUE ~ 'NA')))+
+null_site_model_plot_si = ggplot(data=cv_site_df_wide%>%
+                                   filter(model%in%c(#'chill',
+                                     'forcea',
+                                     'forceb', 'forcee',
+                                     'photoperiod_alla',
+                                     'photoperiod_allb'))%>%
+                                   mutate(
+                                     model=case_when(
+                                       #model=='chill' ~ 'chilling',
+                                       model=='forcea' ~ 'forcing by lat',
+                                       model=='forceb' ~ 'forcing by chill',
+                                       model=='forcee' ~ 'forcing by chill and lat',
+                                       model=='photoperiod_alla' ~ 'photoperiod by MAT',
+                                       model=='photoperiod_allb' ~ 'photoperiod by lat',
+                                       TRUE ~ 'NA')
+                                   )
+)+
   geom_density(aes(x=rmse_delta, group=model, fill=model, color=model), 
-               alpha=0.5, adjust=2)+
+               alpha=0.5, adjust=1.5)+
   theme(panel.background = element_blank())+
   geom_vline(xintercept=0, linetype='dotted')+
-  facet_grid(rows = 'model')+
+  facet_grid(rows = 'model', scales='free_x')+
   #facet_wrap(~model, ncol = 2)+
-  xlim(-20,20)+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
   labs(x = expression(delta[rmse(model - null)]))+
-  guides(fill=FALSE, color=FALSE)+
-  geom_text(data=insets_site_all, aes(x=10, y=0.3, label=prop_worse_than_null), size=3)
+  guides(fill=FALSE, color=FALSE)#+
+#geom_text(data=insets, aes(x=10, y=4, label=prop_worse_than_null), size=3)
 
 
-insets_site_subset=cv_site_df_wide%>%
-  group_by(model)%>%
-  summarise(prop_worse_than_null=sum(rmse_delta>0)/dplyr::n())%>%
-  filter(model%in%c('force', 
-                    'photoperiod_all',
-                    'lat', 'MAT'))%>%
-  mutate(
-    model=case_when(
-      model=='force' ~ 'forcing',
-      model=='lat' ~ 'latitude',
-      model=='photoperiod_all' ~ 'photoperiod',
-      model=='MAT' ~ 'MAT',
-      TRUE ~ 'NA')
-  )
 
 #just select subset for paper
 null_site_model_plot_subset = ggplot(data=cv_site_df_wide%>%
@@ -1016,13 +994,13 @@ null_site_model_plot_subset = ggplot(data=cv_site_df_wide%>%
                alpha=0.5, adjust=2)+
   theme(panel.background = element_blank())+
   geom_vline(xintercept=0, linetype='dotted')+
-  facet_grid(rows = 'model')+
+  facet_grid(rows = 'model', scales='free_y')+
   #facet_wrap(model, ncol = 1)+
-  xlim(-20,20)+
+  xlim(-30,30)+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
   labs(x = expression(delta[rmse(model - null)]))+
-  guides(fill=FALSE, color=FALSE)+
-  geom_text(data=insets_site_subset, aes(x=10, y=0.3, label=prop_worse_than_null), size=3)
+  guides(fill=FALSE, color=FALSE)#+
+  #geom_text(data=insets_site_subset, aes(x=10, y=0.3, label=prop_worse_than_null), size=3)
 
 
 #combine plots
@@ -1060,84 +1038,36 @@ bottom = grid::textGrob(
 ggsave("plots/joint_plot.jpg", joint_plot, height=12, width=8)
 
 
+#combine plots
+joint_plot_si=
+  egg::ggarrange(null_site_model_plot_si+
+                   ggtitle("spatial")+
+                   theme(plot.title = element_text(hjust = 0.5),
+                         axis.title.x = element_blank(),
+                         strip.background = element_blank(),
+                         strip.text.y = element_blank()),
+                 null_year_model_plot_si + 
+                   ggtitle("temporal")+
+                   theme(plot.title = element_text(hjust = 0.5))+
+                   theme(#axis.text.y = element_blank(),
+                     #axis.ticks.y = element_blank(),
+                     axis.title.y = element_blank(),
+                     axis.title.x = element_blank(),
+                     strip.text.y = element_text(size = 14)),
+                 nrow = 1, labels = c('a', 'b'),
+                 bottom = grid::textGrob(
+                   #this works
+                   #paste0('delta \n', expression(better %<->% worse)),
+                   #this does not work
+                   #paste0(expression(delta[rmse(model - null)]), '\n', expression(better %<->% worse)),
+                   expression(atop(delta[rmse(model - null)], better %<->% worse)),
+                   #expression(better %<->% worse),
+                   #expression(delta[rmse(model - null)] \n better %<->% worse),
+                   #expression(paste('delta \n', better %<->% worse)),
+                   gp = grid::gpar(fontface = 3, fontsize = 18),
+                   #hjust = 1,
+                   just='center'
+                   #x = 0.1
+                 ))
 
-
-#add intuitive label axis
-spatial_cv=gridExtra::grid.arrange(
-  null_site_model_plot,
-  nrow = 1,
-  top = "Predictive performace (spatial variation)",
-  bottom = textGrob(
-    paste0('delta \n', expression(better %<->% worse)),
-    gp = gpar(fontface = 3, fontsize = 25),
-    #hjust = 1,
-    just='center'
-    #x = 0.1
-  ))
-
-ggsave("plots/spatial_cv.jpg", spatial_cv)
-
-
-
-#figure out range of year models so you can glue them together
-#into a single multi-panel figure but reducing
-# labeling redundancy in cowplot
-ylims=ggplot_build(null_year_model_plot)$layout$panel_scales_y[[1]]$range$range
-
-spatial_cv_2panel=null_site_model_plot+
- theme(
-    strip.background = element_blank(),
-    strip.text.y = element_blank(),
-    plot.title = element_text(hjust = 0.5)
-  )+ylim(ylims)+
-  labs(title='spatial variation')
-
-spatial_cv_2panel=gridExtra::grid.arrange(
-  spatial_cv_2panel,
-  nrow = 1,
-  bottom = textGrob(
-    expression(better %<->% worse),
-    gp = gpar(fontface = 3, fontsize = 25),
-    just='center'
-  ))
-
-temporal_cv_2panel=null_year_model_plot+
-  labs(y=NULL)+
-  labs(title='temporal variation')+
-  theme(axis.ticks = element_blank(),
-        axis.text.y=element_blank(),
-        plot.title = element_text(hjust = 0.5))
-
-temporal_cv_2panel=gridExtra::grid.arrange(
-  temporal_cv_2panel,
-  nrow = 1,
-  #top = "Predictive performace (spatial variation)",
-  bottom = textGrob(
-    expression(better %<->% worse),
-    gp = gpar(fontface = 3, fontsize = 25),
-    just='center'
-  ))
-
-panelfig_2=cowplot::plot_grid(spatial_cv_2panel, temporal_cv_2panel)
-
-title <- cowplot::ggdraw() + 
-  cowplot::draw_label(
-    "Model predictive performance",
-    fontface = 'bold',
-    hjust = 0.5
-  ) +
-  theme(
-    # add margin on the left of the drawing canvas,
-    # so title is aligned with left edge of first plot
-    plot.margin = margin(0, 0, 0, 7)
-  )
-
-panelfig_2=cowplot::plot_grid(
-  title, panelfig_2,
-  ncol = 1,
-  # rel_heights values control vertical title margins
-  rel_heights = c(0.1, 1)
-)
-
-ggsave("plots/spatial_temporal_cv.jpg", panelfig_2, width=6, height=5)
-
+ggsave("plots/joint_plot_si.jpg", joint_plot_si, height=12, width=8)
