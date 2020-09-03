@@ -170,7 +170,7 @@ latcol = coltab$latcols[which(coltab$latr ==lat.to.plot)]
  
  
  plot(dflat$lat,dflat$fu,pch=21,bty = "l",cex = 2, col = "darkgray", bg=dflat$latcols, 
-      xlab="FU (Degree Days)",ylab="Onset of wood formation (DOY)",
+      xlab="Latitude",ylab="FU (Degree Days)",
       cex.lab = 2, cex.axis = 2)
   mtext("B)", line = 2, adj= 0,cex = 1.8)
   abline(flatmod, lwd =2)
