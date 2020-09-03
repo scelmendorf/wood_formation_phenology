@@ -172,11 +172,7 @@ latcol = coltab$latcols[which(coltab$latr ==lat.to.plot)]
  plot(dflat$fu,dflat$phen,pch=21,bty = "l",cex = 2, col = "darkgray", bg=dflat$latcols, 
       xlab="Forcing (Degree Days)",ylab="Onset of wood formation (DOY)",
       cex.lab = 2, cex.axis = 2)
- m<-lm(dflat$phen~dflat$fu)
- if(summary(m)$coef[2,4]<=0.1){abline(m,lwd=2)}
- r2<-round(summary(m)$r.squared, digits = 2)
- mtext(bquote(paste('R'^'2'*' = ',.(r2))), side = 3,adj = 1, line = -3)
- mtext("D)", line = 2, adj= 0,cex = 1.8)
+  mtext("D)", line = 2, adj= 0,cex = 1.8)
 
  plot(dflat$spat,dflat$phen, pch=21, bty = "l",cex = 2, col = "darkgray",bg  = dflat$latcols,
       xlab = expression(paste("Mean Annual Temperature (",degree,"C)")), ylab = "Onset of wood formation (DOY)",
@@ -214,7 +210,7 @@ latcol = coltab$latcols[which(coltab$latr ==lat.to.plot)]
  dev.off()
  
  
- #add color bad legend
+ #add color bar legend
  color.bar <- function(lut, min, max=-min, nticks=11, ticks=seq(min, max, len=nticks), title='') {
    scale = (length(lut)-1)/(max-min)
    
