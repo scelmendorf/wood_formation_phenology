@@ -173,7 +173,7 @@ latcol = coltab$latcols[which(coltab$latr ==lat.to.plot)]
       xlab="FU (Degree Days)",ylab="Onset of wood formation (DOY)",
       cex.lab = 2, cex.axis = 2)
   mtext("B)", line = 2, adj= 0,cex = 1.8)
-  abline(latmod, lwd =2)
+  abline(flatmod, lwd =2)
  plot(dflat$spat,dflat$phen, pch=21, bty = "l",cex = 2, col = "darkgray",bg  = dflat$latcols,
       xlab = expression(paste("Mean Annual Temperature (",degree,"C)")), ylab = "Onset of wood formation (DOY)",
       cex.lab = 2, cex.axis = 2)
