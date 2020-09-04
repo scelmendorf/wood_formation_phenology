@@ -732,6 +732,7 @@ null_site_model_plot_main = ggplot(data=cv_site_df_wide%>%
   guides(fill=FALSE, color=FALSE)
 ggsave("plots/null_site_model_plot_main.jpg", null_site_model_plot_main , height=12, width=6)
 
+#Spatial model figs####
 null_site_model_plot_si = ggplot(data=cv_site_df_wide%>%
                                    filter(model%in%c(#'chill',
                                      'forcea',
@@ -756,8 +757,9 @@ null_site_model_plot_si = ggplot(data=cv_site_df_wide%>%
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
   labs(x = expression(delta[rmse(model - null)]))+
   guides(fill=FALSE, color=FALSE)
+ggsave("plots/null_site_model_plot_si.jpg", null_site_model_plot_si, height=12, width=6)
 
-
+#Multpanel figs####
 #combine plots
 joint_plot_main=
   egg::ggarrange(null_site_model_plot_main+
@@ -793,8 +795,7 @@ joint_plot_si=
                  null_year_model_plot_si + 
                    ggtitle("temporal")+
                    theme(plot.title = element_text(hjust = 0.5))+
-                   theme(#axis.text.y = element_blank(),
-                     #axis.ticks.y = element_blank(),
+                   theme(
                      axis.title.y = element_blank(),
                      axis.title.x = element_blank(),
                      strip.text.y = element_text(size = 14)),
