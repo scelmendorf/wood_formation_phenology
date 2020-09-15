@@ -744,7 +744,7 @@ null_site_model_plot_si = ggplot(data = cv_site_df_wide%>%
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))+
   labs(x = expression(delta[rmse(model - null)]))+
   guides(fill = FALSE, color = FALSE)
-#ggsave("plots/null_site_model_plot_si.jpg", null_site_model_plot_si, height = 12, width = 6)
+
 
 # Multpanel figs####
 # combine plots
@@ -767,7 +767,7 @@ bottom = grid::textGrob(
   gp = grid::gpar(fontface = 3, fontsize = 18),
   just = 'center'
 ))
-ggsave("plots/cv_plot_main.jpg", joint_plot_main, height = 12, width = 8)
+ggsave("plots/cv_plot_main.pdf", joint_plot_main, height = 12, width = 8)
 
 
 # combine plots
@@ -791,4 +791,4 @@ joint_plot_si =
                    gp = grid::gpar(fontface = 3, fontsize = 18),
                    just = 'center'
                  ))
-ggsave("plots/cv_plot_si.jpg", joint_plot_si, height=12, width = 8)
+ggsave("plots/cv_plot_si.pdf", joint_plot_si, height=12, width = 8)
