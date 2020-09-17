@@ -1,5 +1,5 @@
 # wood_formation_phenology
-Exploring the phenology of xylogenesis, using data from Huang et al. 2020 [doi:10.1073/pnas.2007058117](https://doi.org/10.1073/pnas.2007058117)
+Exploring the phenology of xylogenesis, using data from Huang et al. 2020 [doi:10.1073/pnas.2007058117](https://doi.org/10.1073/pnas.2007058117). Methodological details can be found in the methods.pdf document.
 
 ## Usage notes
 - To run the cross validation you will first need to add the ERA_export_pnas_clim_08_20_2020.csv to your own personal /data directory; *it is too big for git* and will be ignored in the .gitignore
